@@ -23,6 +23,8 @@
 
 body {
   margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
@@ -378,5 +380,62 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 
 @media (max-width: 480px) {
   :root { font-size: 14px; }
-  .tabs { top: 49px; }
+
+  /* ---- bottom navigation ---- */
+  .tabs {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-width: none;
+    margin: 0;
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    background: var(--bg-soft);
+    border-top: 1px solid var(--line);
+    border-bottom: none;
+    box-shadow: 0 -2px 10px rgba(0,0,0,.25);
+    z-index: 30;
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 8px 2px;
+    font-size: .72rem;
+    white-space: nowrap;
+  }
+  .main {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+
+  /* ---- avoid iOS auto-zoom on form focus ---- */
+  textarea, input[type="password"], input[type="text"], select {
+    font-size: 16px;
+  }
+
+  /* ---- quote modal as bottom sheet ---- */
+  .modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal {
+    width: 100%;
+    max-width: none;
+    max-height: 90dvh;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  /* ---- wider tap targets for post actions ---- */
+  .post-actions { gap: 2px; }
+  .pa-btn {
+    flex: 1;
+    min-height: 44px;
+    padding: 10px 4px;
+    text-align: center;
+  }
 }
