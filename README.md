@@ -52,6 +52,10 @@ python3 -m http.server 8000
 
 「設定」タブでプロバイダを選びキーを保存。キーはlocalStorageにのみ保存され、ブラウザから各社APIへ直接送信されます。共有PCでは使用しないでください。
 
+### オフライン対応（Service Worker）
+
+`sw.js` がアプリシェル（`index.html` / `css/style.css` / `js/*.js` / `manifest.webmanifest` / `icons/`）をインストール時にプリキャッシュし、`fetch`はcache-firstで返す。データはlocalStorageのみなのでキャッシュ対象は静的資産だけであり、AI API呼び出し（`api.anthropic.com` / `generativelanguage.googleapis.com`）は`sw.js`内で明示的に除外していて常にネットワークへ素通しする。**運用ルール**: `index.html`・CSS・JS・アイコンなど、シェルの中身をデプロイで変更したら、必ず`sw.js`先頭の`CACHE_VERSION`をインクリメントすること。バージョン文字列を上げないとブラウザは`sw.js`自体の変更（バイト差分）を検知できず、古いService Workerが居座って新しいデプロイがユーザーに反映されない「更新の罠」が発生する。バージョンを上げれば、次回アクセス時に新しいキャッシュがインストールされ、`activate`時に古いバージョンのキャッシュが破棄される。
+
 ## レポートの分析フォーマット（固定スキーマ v1）
 
 ```json
@@ -92,4 +96,5 @@ js/vine.js      — ブドウの木の成長モデルとSVG描画
 js/ai.js        — マルチプロバイダAI層（Claude / Gemini）＋ローカル統計
 js/report.js    — 固定スキーマの週次/月次レポート生成とメタ分析
 js/app.js       — UIコントローラ
+sw.js           — Service Worker（アプリシェルのオフラインキャッシュ）
 ```
