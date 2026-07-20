@@ -31,7 +31,7 @@
   <button class="tab active" data-view="timeline">タイムライン</button>
   <button class="tab" data-view="timeaxis">時間軸</button>
   <button class="tab" data-view="vine">ブドウの木</button>
-  <button class="tab" data-view="analysis">分析</button>
+  <button class="tab" data-view="report">レポート</button>
   <button class="tab" data-view="settings">設定</button>
 </nav>
 
@@ -39,11 +39,14 @@
 
   <!-- ===== タイムライン ===== -->
   <section class="view" id="view-timeline">
+    <div class="pending-banner" id="pendingBanner" hidden>
+      🍇 <span id="pendingBannerMsg"></span>
+      <button class="btn small primary" id="pendingBannerGo">レポートを見る</button>
+    </div>
     <div class="composer card">
-      <div class="composer-kinds" id="kindPicker"></div>
-      <textarea id="composerText" rows="3" placeholder="いま、なにを考えている？"></textarea>
+      <textarea id="composerText" rows="3" placeholder="いま、なにを考えている？（雑記でいい。分類は他者＝AIの仕事）"></textarea>
       <div class="composer-footer">
-        <div class="mood-picker" id="moodPicker" title="いまの気分"></div>
+        <div class="mood-picker" id="moodPicker" title="いまの気分（任意）"></div>
         <div class="composer-actions">
           <span class="char-count" id="charCount"></span>
           <button class="btn primary" id="postBtn">刻む</button>
@@ -67,30 +70,32 @@
     </div>
   </section>
 
-  <!-- ===== 分析 ===== -->
-  <section class="view" id="view-analysis" hidden>
+  <!-- ===== レポート ===== -->
+  <section class="view" id="view-report" hidden>
+    <p class="view-desc">雑記はそのままに、AI＝唯一の他者が週・月の単位で構造的に解釈する。毎回同じ分析フォーマットで蓄積され、時間をまたいだ自己のメタ分析になる。</p>
+
     <div class="card">
-      <h2>感情の推移（30日）</h2>
-      <div id="moodChart"></div>
-    </div>
-    <div class="card">
-      <h2>ローカル統計</h2>
-      <div id="localStats"></div>
-    </div>
-    <div class="card">
-      <h2>AIの目 — もうひとつの視点</h2>
-      <p class="muted">AIがあなたの記録を読み、感情の傾向・見落としている視点・次の一手を提案します。</p>
+      <h2>レポートを作成</h2>
       <div class="ai-controls">
-        <select id="aiPeriod">
-          <option value="7">直近1週間</option>
-          <option value="30">直近1ヶ月</option>
-          <option value="365">直近1年</option>
-          <option value="1825">直近5年</option>
-          <option value="3650">直近10年</option>
-        </select>
-        <button class="btn primary" id="aiAnalyzeBtn">分析を依頼する</button>
+        <select id="periodSelect"></select>
+        <button class="btn primary" id="generateReportBtn">生成</button>
       </div>
-      <div id="aiResult" class="ai-result"></div>
+      <p class="muted" id="generateHint"></p>
+      <div id="generateStatus" class="ai-result"></div>
+    </div>
+
+    <div class="card" id="metaCard" hidden>
+      <h2>メタ分析 — 他者の目が観測してきた自分</h2>
+      <div id="metaChart"></div>
+      <div id="metaThemes"></div>
+    </div>
+
+    <div id="reportList"></div>
+
+    <div class="card">
+      <h2>ローカル統計（直近30日）</h2>
+      <div id="moodChart"></div>
+      <div id="localStats"></div>
     </div>
   </section>
 
@@ -98,29 +103,44 @@
   <section class="view" id="view-settings" hidden>
     <div class="card">
       <h2>AI設定</h2>
-      <p class="muted">Anthropic APIキーを設定すると、AIが「唯一の他者」としてあなたの記録に応答します。キーはこのブラウザのlocalStorageにのみ保存され、Anthropic API以外には送信されません。</p>
+      <p class="muted">APIキーはこのブラウザのlocalStorageにのみ保存され、選択したプロバイダのAPI以外には送信されません。共有PCでは登録しないでください。</p>
       <label class="field">
-        <span>Anthropic APIキー</span>
-        <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
-      </label>
-      <label class="field">
-        <span>モデル</span>
-        <select id="modelSelect">
-          <option value="claude-opus-4-8">Claude Opus 4.8（推奨）</option>
-          <option value="claude-sonnet-5">Claude Sonnet 5</option>
-          <option value="claude-haiku-4-5">Claude Haiku 4.5（高速・低コスト）</option>
+        <span>プロバイダ</span>
+        <select id="providerSelect">
+          <option value="anthropic">Claude（Anthropic）</option>
+          <option value="gemini">Gemini（Google）— 低コスト</option>
         </select>
       </label>
+      <div id="anthropicFields">
+        <label class="field">
+          <span>Anthropic APIキー</span>
+          <input type="password" id="anthropicKeyInput" placeholder="sk-ant-...">
+        </label>
+        <label class="field">
+          <span>モデル</span>
+          <select id="anthropicModelSelect"></select>
+        </label>
+      </div>
+      <div id="geminiFields" hidden>
+        <label class="field">
+          <span>Gemini APIキー（Google AI Studioで取得）</span>
+          <input type="password" id="geminiKeyInput" placeholder="AIza...">
+        </label>
+        <label class="field">
+          <span>モデル</span>
+          <select id="geminiModelSelect"></select>
+        </label>
+      </div>
       <label class="field checkbox">
         <input type="checkbox" id="aiAutoReply">
-        <span>ポストにAIがときどき返信する（唯一のフォロワー）</span>
+        <span>ポストにAIがときどき返信する（デフォルトOFF推奨。AIの基本の出番は週次レポート）</span>
       </label>
       <button class="btn primary" id="saveSettingsBtn">保存</button>
       <span id="settingsSaved" class="muted"></span>
     </div>
     <div class="card">
       <h2>データ</h2>
-      <p class="muted">すべてのデータはこのブラウザに保存されています。バックアップと引っ越しはここから。</p>
+      <p class="muted">すべてのデータ（雑記＋レポート）はこのブラウザに保存されています。バックアップと引っ越しはここから。レポートは固定スキーマのJSONなので、他のツールやAIにもそのまま渡せます。</p>
       <div class="row-gap">
         <button class="btn" id="exportBtn">エクスポート（JSON）</button>
         <label class="btn file-btn">インポート<input type="file" id="importFile" accept="application/json" hidden></label>

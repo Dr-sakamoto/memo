@@ -2,8 +2,7 @@
 
 const POSTS_KEY = "cns.posts.v1";
 const SETTINGS_KEY = "cns.settings.v1";
-
-export const KINDS = ["日記", "反省", "分析", "計画", "思考"];
+const REPORTS_KEY = "cns.reports.v1";
 
 export const MOODS = [
   { value: 2,  emoji: "😄" },
@@ -12,6 +11,15 @@ export const MOODS = [
   { value: -1, emoji: "😞" },
   { value: -2, emoji: "😢" },
 ];
+
+const DEFAULT_SETTINGS = {
+  provider: "anthropic",            // "anthropic" | "gemini"
+  anthropicKey: "",
+  anthropicModel: "claude-opus-4-8",
+  geminiKey: "",
+  geminiModel: "gemini-2.5-flash",
+  aiAutoReply: false,
+};
 
 function load(key, fallback) {
   try {
@@ -27,11 +35,21 @@ function save(key, value) {
 }
 
 let posts = load(POSTS_KEY, []);
-let settings = load(SETTINGS_KEY, {
-  apiKey: "",
-  model: "claude-opus-4-8",
-  aiAutoReply: false,
-});
+let reports = load(REPORTS_KEY, []);
+
+let settings = load(SETTINGS_KEY, null);
+if (!settings) {
+  settings = { ...DEFAULT_SETTINGS };
+} else if (settings.anthropicKey === undefined) {
+  // v1設定（apiKey/model）からの移行
+  settings = {
+    ...DEFAULT_SETTINGS,
+    anthropicKey: settings.apiKey || "",
+    anthropicModel: settings.model || DEFAULT_SETTINGS.anthropicModel,
+    aiAutoReply: Boolean(settings.aiAutoReply),
+  };
+  save(SETTINGS_KEY, settings);
+}
 
 export function getPosts() {
   return posts;
@@ -61,12 +79,12 @@ export function extractTags(text) {
 }
 
 // type: "post" | "repost" | "quote"
-export function addPost({ text, kind, mood, type = "post", refId = null }) {
+export function addPost({ text, mood, type = "post", refId = null }) {
   const post = {
     id: newId(),
     type,
     text: text || "",
-    kind: kind || KINDS[0],
+    kind: "雑記",
     mood: mood ?? null,
     tags: extractTags(text || ""),
     refId,
@@ -110,6 +128,31 @@ export function setAiReply(id, text) {
   save(POSTS_KEY, posts);
 }
 
+// ---- レポート（AIによる構造化解釈の蓄積） ----
+
+export function getReports() {
+  return reports;
+}
+
+export function hasReport(periodKey) {
+  return reports.some((r) => r.periodKey === periodKey);
+}
+
+export function addReport(report) {
+  reports.unshift(report);
+  save(REPORTS_KEY, reports);
+  return report;
+}
+
+export function deleteReport(id) {
+  reports = reports.filter((r) => r.id !== id);
+  save(REPORTS_KEY, reports);
+}
+
+export function newReportId() {
+  return newId();
+}
+
 // ---- 成長統計 ----
 
 export function activeDays() {
@@ -131,17 +174,26 @@ export function daysSinceFirstPost() {
 // ---- エクスポート / インポート ----
 
 export function exportJson() {
-  return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), posts, settings: { model: settings.model } }, null, 2);
+  return JSON.stringify({
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    posts,
+    reports,
+  }, null, 2);
 }
 
 export function importJson(json) {
   const data = JSON.parse(json);
   if (!Array.isArray(data.posts)) throw new Error("不正なファイル形式です");
   posts = data.posts;
+  reports = Array.isArray(data.reports) ? data.reports : [];
   save(POSTS_KEY, posts);
+  save(REPORTS_KEY, reports);
 }
 
 export function wipeAll() {
   posts = [];
+  reports = [];
   localStorage.removeItem(POSTS_KEY);
+  localStorage.removeItem(REPORTS_KEY);
 }

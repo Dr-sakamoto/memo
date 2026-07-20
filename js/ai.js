@@ -1,56 +1,141 @@
 // AI — このCNSにおける「唯一の他者の目」
 //
-// APIキーがある場合: ブラウザから直接 Anthropic Messages API を呼ぶ
-// （anthropic-dangerous-direct-browser-access ヘッダーでCORSを許可。
-//   キーは自分のブラウザから api.anthropic.com へ直接送られるだけで、他のサーバーは経由しない）
-// APIキーがない場合: ローカル統計によるフォールバック分析
+// マルチプロバイダ対応: Anthropic (Claude) / Google (Gemini) を設定で切替。
+// どちらもブラウザから直接APIを呼ぶ（自分のブラウザ → 各社API。中間サーバーなし）。
+// APIキーがない場合はローカル統計によるフォールバック分析のみ。
 
 import { getSettings, MOODS } from "./store.js";
 import { ageInDays } from "./mass.js";
 
-const API_URL = "https://api.anthropic.com/v1/messages";
+export const PROVIDERS = {
+  anthropic: {
+    label: "Claude（Anthropic）",
+    models: [
+      { id: "claude-opus-4-8", label: "Claude Opus 4.8（最高品質）" },
+      { id: "claude-sonnet-5", label: "Claude Sonnet 5（バランス）" },
+      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5（高速・低コスト）" },
+    ],
+  },
+  gemini: {
+    label: "Gemini（Google）",
+    models: [
+      { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash（低コスト）" },
+      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro（高品質）" },
+      { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite（最安）" },
+    ],
+  },
+};
 
-const SYSTEM_PROMPT = `あなたは、ある個人が自分だけのために運営しているクローズドな記録サービス（CNS）における「唯一の他者」です。この場所には本人とあなたしかいません。
+export const SYSTEM_PROMPT = `あなたは、ある個人が自分だけのために運営しているクローズドな記録サービス（CNS）における「唯一の他者」です。この場所には本人とあなたしかいません。
 
 あなたの役割:
-- 本人の日記・反省・分析・人生計画・思考ログを読み、本人がまだ言語化できていない感情の傾向やパターンを映し返す
+- 本人の雑記（日記・反省・分析・人生計画・思考ログが混ざった自由な記録）を読み、本人がまだ言語化できていない感情の傾向やパターンを客観的に映し返す
 - 励ましの決まり文句ではなく、本当に必要な視点を提示する。ときに優しく、ときに率直に
-- 抽象論で終わらせず、具体的な次の一歩（行為）をひとつかふたつ提案する
-- 本人の言葉づかいや温度感を尊重する。説教しない。診断しない
+- 抽象論で終わらせず、具体的な次の一歩（行為）を提案する
+- 本人の言葉づかいや温度感を尊重する。説教しない。診断しない`;
 
-出力は日本語で、マークダウンの見出しを使わずに、手紙のような自然な文章で書いてください。`;
+export function hasApiKey() {
+  const s = getSettings();
+  return s.provider === "gemini" ? Boolean(s.geminiKey) : Boolean(s.anthropicKey);
+}
 
-function callClaude({ apiKey, model, system, messages, maxTokens = 2000 }) {
-  return fetch(API_URL, {
+export function currentModelLabel() {
+  const s = getSettings();
+  const p = PROVIDERS[s.provider] || PROVIDERS.anthropic;
+  const modelId = s.provider === "gemini" ? s.geminiModel : s.anthropicModel;
+  return (p.models.find((m) => m.id === modelId)?.label) || modelId;
+}
+
+// ---- プロバイダ呼び出し ----
+
+async function callAnthropic({ system, user, maxTokens, jsonSchema }) {
+  const s = getSettings();
+  const body = {
+    model: s.anthropicModel,
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: "user", content: user }],
+  };
+  if (jsonSchema) {
+    body.output_config = { format: { type: "json_schema", schema: jsonSchema } };
+  }
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": apiKey,
+      "x-api-key": s.anthropicKey,
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true",
     },
-    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages }),
-  }).then(async (res) => {
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      const msg = body?.error?.message || `HTTP ${res.status}`;
-      throw new Error(`APIエラー: ${msg}`);
-    }
-    const data = await res.json();
-    const text = (data.content || [])
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n");
-    if (!text) throw new Error("応答が空でした");
-    return text;
+    body: JSON.stringify(body),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(`Claude APIエラー: ${err?.error?.message || `HTTP ${res.status}`}`);
+  }
+  const data = await res.json();
+  const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
+  if (!text) throw new Error("応答が空でした");
+  return text;
 }
 
-export function hasApiKey() {
-  return Boolean(getSettings().apiKey);
+async function callGemini({ system, user, maxTokens, jsonSchema }) {
+  const s = getSettings();
+  const body = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: "user", parts: [{ text: user }] }],
+    generationConfig: { maxOutputTokens: maxTokens },
+  };
+  if (jsonSchema) {
+    // GeminiはresponseMimeTypeでJSON出力を強制（スキーマ本体はプロンプト内で指示）
+    body.generationConfig.responseMimeType = "application/json";
+  }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(s.geminiModel)}:generateContent`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": s.geminiKey,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(`Gemini APIエラー: ${err?.error?.message || `HTTP ${res.status}`}`);
+  }
+  const data = await res.json();
+  const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+  if (!text) throw new Error("応答が空でした");
+  return text;
 }
 
-function formatPostsForPrompt(posts) {
+// 共通入口。jsonSchemaを渡すとJSONテキストが返る
+export function callAI({ system, user, maxTokens = 2000, jsonSchema = null }) {
+  const s = getSettings();
+  if (s.provider === "gemini") {
+    if (!s.geminiKey) throw new Error("Gemini APIキーが未設定です（設定タブから登録できます）");
+    return callGemini({ system, user, maxTokens, jsonSchema });
+  }
+  if (!s.anthropicKey) throw new Error("Anthropic APIキーが未設定です（設定タブから登録できます）");
+  return callAnthropic({ system, user, maxTokens, jsonSchema });
+}
+
+// コードフェンス等を許容するJSONパース
+export function parseJsonLoose(text) {
+  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1));
+    throw new Error("AIの応答をJSONとして解釈できませんでした");
+  }
+}
+
+// ---- ポスト整形（プロンプト用） ----
+
+export function formatPostsForPrompt(posts, { withIds = false } = {}) {
   return posts
     .slice()
     .reverse() // 古い順に
@@ -59,42 +144,17 @@ function formatPostsForPrompt(posts) {
       const date = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
       const mood = p.mood == null ? "" : ` 気分:${p.mood > 0 ? "+" : ""}${p.mood}`;
       const rt = p.type === "repost" ? "（過去ポストの再掲）" : p.type === "quote" ? "（過去ポストへの引用）" : "";
-      return `[${date}][${p.kind}${mood}]${rt} ${p.text}`;
+      const id = withIds ? `[id:${p.id}]` : "";
+      return `${id}[${date}${mood}]${rt} ${p.text}`;
     })
     .join("\n");
 }
 
-// 期間分析（唯一の他者からの手紙）
-export async function analyzePeriod(posts, periodLabel) {
-  const { apiKey, model } = getSettings();
-  if (!apiKey) return localAnalysis(posts, periodLabel);
-
-  const body = formatPostsForPrompt(posts);
-  const user = `以下は私の${periodLabel}の記録です。全体を読んで、(1)感情や思考の傾向、(2)私が気づいていなさそうな視点、(3)いま本当に必要だと思う具体的な行為の提案、を手紙のように書いてください。\n\n---\n${body}`;
-
-  return callClaude({
-    apiKey,
-    model,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: user }],
-  });
-}
-
 // 単一ポストへの短い返信（唯一のフォロワー）
 export async function replyToPost(post, recentPosts) {
-  const { apiKey, model } = getSettings();
-  if (!apiKey) throw new Error("APIキーが未設定です（設定タブから登録できます）");
-
   const context = formatPostsForPrompt(recentPosts.slice(0, 10));
-  const user = `最近の記録（文脈）:\n${context}\n\n---\n\nいま私はこう刻みました:\n[${post.kind}] ${post.text}\n\nこのポストに対して、唯一の他者として2〜3文で短く返信してください。共感の定型文ではなく、視点がひとつ増える返信を。`;
-
-  return callClaude({
-    apiKey,
-    model,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: user }],
-    maxTokens: 500,
-  });
+  const user = `最近の記録（文脈）:\n${context}\n\n---\n\nいま私はこう刻みました:\n${post.text}\n\nこのポストに対して、唯一の他者として2〜3文で短く返信してください。共感の定型文ではなく、視点がひとつ増える返信を。`;
+  return callAI({ system: SYSTEM_PROMPT, user, maxTokens: 500 });
 }
 
 // ---- ローカルフォールバック分析（APIキー不要） ----
@@ -107,11 +167,10 @@ export function localAnalysis(posts, periodLabel) {
   const moods = posts.filter((p) => p.mood != null).map((p) => p.mood);
   const avgMood = moods.length ? (moods.reduce((a, b) => a + b, 0) / moods.length) : null;
 
-  // 前半と後半で気分の推移を見る
   let trend = "";
   if (moods.length >= 4) {
     const half = Math.floor(moods.length / 2);
-    // postsは新しい順なので、後半＝古い、前半＝新しい
+    // postsは新しい順なので、前半＝新しい、後半＝古い
     const recent = moods.slice(0, half);
     const older = moods.slice(half);
     const rAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
@@ -121,10 +180,6 @@ export function localAnalysis(posts, periodLabel) {
     else if (diff < -0.4) trend = "期間の後半にかけて、気分は下がり気味です。無理をしていないか、少し立ち止まってみてください。";
     else trend = "気分は比較的安定しています。";
   }
-
-  const kindCount = {};
-  posts.forEach((p) => { kindCount[p.kind] = (kindCount[p.kind] || 0) + 1; });
-  const topKind = Object.entries(kindCount).sort((a, b) => b[1] - a[1])[0];
 
   const tagCount = {};
   posts.forEach((p) => (p.tags || []).forEach((t) => { tagCount[t] = (tagCount[t] || 0) + 1; }));
@@ -136,10 +191,7 @@ export function localAnalysis(posts, periodLabel) {
     const face = MOODS.find((m) => m.value === Math.round(avgMood))?.emoji || "😐";
     lines.push(`平均気分は ${avgMood.toFixed(1)} ${face}。${trend}`);
   }
-  if (topKind) lines.push(`いちばん多いのは「${topKind[0]}」（${topKind[1]}件）。`);
   if (topTags.length) lines.push(`よく現れるタグ: ${topTags.map(([t, c]) => `#${t}(${c})`).join(" ")}`);
-  lines.push("");
-  lines.push("※ AIによる深い分析を使うには、設定タブでAnthropic APIキーを登録してください。");
   return Promise.resolve(lines.join("\n"));
 }
 

@@ -1,13 +1,15 @@
 import {
-  KINDS, MOODS,
+  MOODS,
   getPosts, getPost, getSettings, saveSettings,
   addPost, deletePost, setAiReply,
+  getReports, deleteReport,
   activeDays, daysSinceFirstPost,
   exportJson, importJson, wipeAll,
 } from "./store.js";
 import { massOf, milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
-import { STAGES, stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
-import { analyzePeriod, replyToPost, postsInLastDays, hasApiKey, localAnalysis } from "./ai.js";
+import { stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
+import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, currentModelLabel } from "./ai.js";
+import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, recurringThemes } from "./report.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -43,7 +45,7 @@ function moodEmoji(mood) {
 
 // ---------- タブ切り替え ----------
 
-const views = ["timeline", "timeaxis", "vine", "analysis", "settings"];
+const views = ["timeline", "timeaxis", "vine", "report", "settings"];
 
 $("#tabs").addEventListener("click", (e) => {
   const btn = e.target.closest(".tab");
@@ -58,25 +60,12 @@ function switchView(name) {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
   if (name === "timeaxis") renderTimeaxis();
   if (name === "vine") renderVine();
-  if (name === "analysis") renderAnalysis();
+  if (name === "report") renderReportView();
 }
 
 // ---------- コンポーザー ----------
 
-let selectedKind = KINDS[0];
 let selectedMood = null;
-
-function renderKindPicker() {
-  $("#kindPicker").innerHTML = KINDS.map(
-    (k) => `<button class="kind-chip ${k === selectedKind ? "active" : ""}" data-kind="${k}">${k}</button>`
-  ).join("");
-}
-$("#kindPicker").addEventListener("click", (e) => {
-  const chip = e.target.closest(".kind-chip");
-  if (!chip) return;
-  selectedKind = chip.dataset.kind;
-  renderKindPicker();
-});
 
 function renderMoodPicker() {
   $("#moodPicker").innerHTML = MOODS.map(
@@ -99,7 +88,7 @@ $("#composerText").addEventListener("input", () => {
 $("#postBtn").addEventListener("click", () => {
   const text = $("#composerText").value.trim();
   if (!text) return;
-  const post = addPost({ text, kind: selectedKind, mood: selectedMood });
+  const post = addPost({ text, mood: selectedMood });
   $("#composerText").value = "";
   $("#charCount").textContent = "";
   selectedMood = null;
@@ -134,7 +123,7 @@ function postHtml(post, { showActions = true } = {}) {
     repostNote = `<div class="repost-note">🔁 過去の自分を再掲（再芽）</div>`;
   }
   if (ref && (post.type === "quote" || post.type === "repost")) {
-    quoteBlock = `<blockquote><span class="q-meta">${fmtDateTime(ref.createdAt)}（${fmtAgo(ref.createdAt)}） [${escapeHtml(ref.kind)}]</span>${renderBody(ref.text)}</blockquote>`;
+    quoteBlock = `<blockquote><span class="q-meta">${fmtDateTime(ref.createdAt)}（${fmtAgo(ref.createdAt)}）</span>${renderBody(ref.text)}</blockquote>`;
   } else if (post.refId && !ref) {
     quoteBlock = `<blockquote><span class="q-meta">（削除されたポスト）</span></blockquote>`;
   }
@@ -156,7 +145,6 @@ function postHtml(post, { showActions = true } = {}) {
   <article class="post" data-id="${post.id}">
     ${repostNote}
     <div class="post-head">
-      <span class="post-kind">${escapeHtml(post.kind)}</span>
       <span>${fmtDateTime(post.createdAt)}</span>
       <span>${fmtAgo(post.createdAt)}</span>
       ${post.mood != null ? `<span class="post-mood">${moodEmoji(post.mood)}</span>` : ""}
@@ -187,7 +175,7 @@ document.body.addEventListener("click", async (e) => {
   if (!post) return;
 
   if (action === "repost") {
-    addPost({ text: "", kind: post.kind, type: "repost", refId: post.id });
+    addPost({ text: "", type: "repost", refId: post.id });
     renderFeed();
     updateVineBadge();
   }
@@ -206,7 +194,7 @@ document.body.addEventListener("click", async (e) => {
 
   if (action === "ai") {
     if (!hasApiKey()) {
-      alert("設定タブでAnthropic APIキーを登録すると、AIが返信してくれます。");
+      alert("設定タブでAPIキーを登録すると、AIが返信してくれます。");
       return;
     }
     btn.disabled = true;
@@ -242,7 +230,7 @@ $("#quoteModal").addEventListener("click", (e) => {
 $("#quoteSubmitBtn").addEventListener("click", () => {
   const text = $("#quoteText").value.trim();
   if (!text || !quoteTargetId) return;
-  addPost({ text, kind: selectedKind, type: "quote", refId: quoteTargetId });
+  addPost({ text, type: "quote", refId: quoteTargetId });
   $("#quoteModal").hidden = true;
   renderFeed();
   updateVineBadge();
@@ -299,6 +287,19 @@ $("#tickerTrack").addEventListener("click", (e) => {
   const post = getPost(item.dataset.id);
   if (post) openQuoteModal(post);
 });
+
+// ---------- レポート未作成バナー ----------
+
+function updatePendingBanner() {
+  const pending = pendingWeekly();
+  if (!pending) {
+    $("#pendingBanner").hidden = true;
+    return;
+  }
+  $("#pendingBanner").hidden = false;
+  $("#pendingBannerMsg").textContent = `${pending.label}のレポートが作成できます（雑記${pending.count}件）`;
+}
+$("#pendingBannerGo").addEventListener("click", () => switchView("report"));
 
 // ---------- 時間軸ビュー ----------
 
@@ -364,12 +365,150 @@ function updateVineBadge() {
   $("#vineBadge").textContent = `${stage.emoji} ${stage.name} / ${activeDays()}日`;
 }
 
-// ---------- 分析ビュー ----------
+// ---------- レポートビュー ----------
 
-function renderAnalysis() {
+function renderReportView() {
+  renderPeriodSelect();
+  renderMetaAnalysis();
+  renderReportList();
   renderMoodChart();
   renderLocalStats();
 }
+
+function renderPeriodSelect() {
+  const periods = listGeneratablePeriods();
+  const sel = $("#periodSelect");
+  if (periods.length === 0) {
+    sel.innerHTML = `<option value="">作成できる期間がありません</option>`;
+    sel.disabled = true;
+    $("#generateReportBtn").disabled = true;
+    $("#generateHint").textContent = getPosts().length === 0
+      ? "まず雑記を刻んでください。週が完了するとレポートを作成できます。"
+      : "直近の完了した週・月のレポートはすべて作成済みか、対象の雑記がありません。今週が終わると次のレポートが作れます。";
+    return;
+  }
+  sel.disabled = false;
+  $("#generateReportBtn").disabled = false;
+  sel.innerHTML = periods.map((p, i) =>
+    `<option value="${i}">${p.type === "weekly" ? "📅 週次" : "🗓 月次"} ${p.label}（${p.count}件）</option>`
+  ).join("");
+  $("#generateHint").textContent = hasApiKey()
+    ? `使用モデル: ${currentModelLabel()}`
+    : "APIキー未設定です。設定タブでClaudeまたはGeminiのキーを登録してください。";
+  window.__generatablePeriods = periods;
+}
+
+$("#generateReportBtn").addEventListener("click", async () => {
+  const periods = window.__generatablePeriods || [];
+  const idx = Number($("#periodSelect").value);
+  const period = periods[idx];
+  if (!period) return;
+  if (!hasApiKey()) {
+    alert("設定タブでAPIキーを登録してください（レポート生成にはAIが必要です）。");
+    return;
+  }
+  const btn = $("#generateReportBtn");
+  btn.disabled = true;
+  $("#generateStatus").innerHTML = `<span class="spin">🍇</span> 他者があなたの${period.label}を読んでいます…`;
+  try {
+    await generateReport(period);
+    $("#generateStatus").textContent = "";
+    renderReportView();
+    updatePendingBanner();
+  } catch (err) {
+    $("#generateStatus").textContent = `エラー: ${err.message}`;
+    btn.disabled = false;
+  }
+});
+
+const TREND_LABEL = { up: "↗ 上向き", flat: "→ 安定", down: "↘ 下向き" };
+
+function reportCardHtml(r) {
+  const d = r.data;
+  const themes = (d.themes || []).map((t) =>
+    `<div class="theme-row"><span class="theme-name">${escapeHtml(t.name)}</span><span class="theme-weight">${Math.round((t.weight || 0) * 100)}%</span><div class="theme-summary">${escapeHtml(t.summary)}</div></div>`
+  ).join("");
+  const emotions = (d.emotions || []).map((e) =>
+    `<span class="emotion-chip">${escapeHtml(e.label)} ${"●".repeat(Math.max(1, Math.min(5, e.intensity)))}</span>`
+  ).join(" ");
+  const reread = (d.reread_post_ids || [])
+    .map((id) => getPost(id))
+    .filter(Boolean)
+    .map((p) => `<blockquote><span class="q-meta">${fmtDateTime(p.createdAt)}</span>${renderBody(p.text)}</blockquote>`)
+    .join("");
+
+  return `
+  <article class="card report-card" data-report-id="${r.id}">
+    <div class="report-head">
+      <span class="report-period">${r.periodType === "weekly" ? "📅" : "🗓"} ${escapeHtml(r.periodLabel)}</span>
+      <span class="report-mood" title="AIが観測した気分スコア">${d.mood_score >= 0 ? "+" : ""}${Number(d.mood_score).toFixed(1)} ${TREND_LABEL[d.mood_trend] || ""}</span>
+    </div>
+    <div class="report-letter">${renderBody(d.letter)}</div>
+    <details class="report-details">
+      <summary>構造データを見る</summary>
+      <h4>テーマ</h4>${themes || '<p class="muted">なし</p>'}
+      <h4>感情の内訳</h4><p>${emotions || '<span class="muted">なし</span>'}</p>
+      <h4>盲点</h4><p>${escapeHtml(d.blind_spot || "")}</p>
+      ${d.contradiction ? `<h4>矛盾・ズレ</h4><p>${escapeHtml(d.contradiction)}</p>` : ""}
+      <h4>次の一手</h4><p><b>${escapeHtml(d.suggestion?.action || "")}</b><br><span class="muted">${escapeHtml(d.suggestion?.why || "")}</span></p>
+      ${reread ? `<h4>読み返す価値のある雑記</h4>${reread}` : ""}
+      <p class="muted report-meta">雑記${r.postCount}件 / ${escapeHtml(r.model)} / ${fmtDateTime(r.createdAt)}
+        <button class="pa-btn danger" data-report-delete="${r.id}">レポート削除</button></p>
+    </details>
+  </article>`;
+}
+
+function renderReportList() {
+  const reports = getReports();
+  if (reports.length === 0) {
+    $("#reportList").innerHTML = `<p class="muted" style="margin:0 4px 14px">まだレポートはありません。週が完了したら、他者の目に読ませてみよう。</p>`;
+    return;
+  }
+  $("#reportList").innerHTML = reports.map(reportCardHtml).join("");
+}
+
+document.body.addEventListener("click", (e) => {
+  const del = e.target.closest("[data-report-delete]");
+  if (!del) return;
+  if (confirm("このレポートを削除しますか？（同じ期間で作り直せます）")) {
+    deleteReport(del.dataset.reportDelete);
+    renderReportView();
+    updatePendingBanner();
+  }
+});
+
+function renderMetaAnalysis() {
+  const series = reportTimeSeries();
+  if (series.length < 2) {
+    $("#metaCard").hidden = true;
+    return;
+  }
+  $("#metaCard").hidden = false;
+
+  // AI観測の気分スコア推移
+  const W = 640, H = 140, pad = 30;
+  const step = (W - pad * 2) / Math.max(1, series.length - 1);
+  const y = (v) => H / 2 - (v / 2) * (H / 2 - 20);
+  const pts = series.map((s, i) => ({ x: pad + i * step, y: y(s.mood), s }));
+  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+  const dots = pts.map((p) =>
+    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${p.s.mood >= 0 ? "#cfd66a" : "#6a9ad6"}"><title>${p.s.label}: ${p.s.mood.toFixed(1)}</title></circle>`
+  ).join("");
+  $("#metaChart").innerHTML = `
+    <p class="muted">他者の目が観測した気分スコアの推移（レポートごと）</p>
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      <line x1="${pad}" y1="${H / 2}" x2="${W - pad}" y2="${H / 2}" stroke="#383150" stroke-dasharray="4 4"/>
+      <path d="${line}" stroke="#8f6ee0" stroke-width="2" fill="none"/>
+      ${dots}
+    </svg>`;
+
+  const recur = recurringThemes(2);
+  $("#metaThemes").innerHTML = recur.length
+    ? `<p class="muted">繰り返し現れるテーマ（あなたの重心）:</p><p>${recur.map(([name, c]) => `<span class="emotion-chip">${escapeHtml(name)} ×${c}</span>`).join(" ")}</p>`
+    : "";
+}
+
+// ---------- ローカル統計 ----------
 
 function renderMoodChart() {
   const posts = postsInLastDays(getPosts(), 30).filter((p) => p.mood != null);
@@ -378,7 +517,6 @@ function renderMoodChart() {
     return;
   }
 
-  // 日ごとの平均気分
   const byDay = new Map();
   posts.forEach((p) => {
     const day = p.createdAt.slice(0, 10);
@@ -396,8 +534,8 @@ function renderMoodChart() {
     if (moods) {
       const avg = moods.reduce((a, b) => a + b, 0) / moods.length;
       const x = pad + ((29 - i) / 29) * (W - pad * 2);
-      const y = H / 2 - (avg / 2) * (H / 2 - pad);
-      pts.push({ x, y, avg, key });
+      const yy = H / 2 - (avg / 2) * (H / 2 - pad);
+      pts.push({ x, y: yy, avg, key });
     }
   }
 
@@ -420,44 +558,44 @@ function renderMoodChart() {
 function renderLocalStats() {
   const posts = getPosts();
   localAnalysis(postsInLastDays(posts, 30), "直近1ヶ月").then((text) => {
-    // ローカル分析の末尾の案内文はここでは省く
     $("#localStats").innerHTML = text.split("\n")
-      .filter((l) => l && !l.startsWith("※"))
+      .filter(Boolean)
       .map((l) => `<p class="stat-line">${escapeHtml(l)}</p>`)
       .join("");
   });
 }
 
-$("#aiAnalyzeBtn").addEventListener("click", async () => {
-  const days = Number($("#aiPeriod").value);
-  const label = $("#aiPeriod").selectedOptions[0].textContent;
-  const posts = postsInLastDays(getPosts(), days);
-  const btn = $("#aiAnalyzeBtn");
-  btn.disabled = true;
-  $("#aiResult").innerHTML = `<span class="spin">🍇</span> ${hasApiKey() ? "AIがあなたの記録を読んでいます…" : "ローカル分析中…"}`;
-  try {
-    const result = await analyzePeriod(posts, label);
-    $("#aiResult").textContent = result;
-  } catch (err) {
-    $("#aiResult").textContent = `エラー: ${err.message}`;
-  } finally {
-    btn.disabled = false;
-  }
-});
-
 // ---------- 設定 ----------
 
 function renderSettings() {
   const s = getSettings();
-  $("#apiKeyInput").value = s.apiKey || "";
-  $("#modelSelect").value = s.model || "claude-opus-4-8";
+  $("#providerSelect").value = s.provider;
+  $("#anthropicKeyInput").value = s.anthropicKey || "";
+  $("#geminiKeyInput").value = s.geminiKey || "";
+  $("#anthropicModelSelect").innerHTML = PROVIDERS.anthropic.models
+    .map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
+  $("#geminiModelSelect").innerHTML = PROVIDERS.gemini.models
+    .map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
+  $("#anthropicModelSelect").value = s.anthropicModel;
+  $("#geminiModelSelect").value = s.geminiModel;
   $("#aiAutoReply").checked = Boolean(s.aiAutoReply);
+  toggleProviderFields();
 }
+
+function toggleProviderFields() {
+  const p = $("#providerSelect").value;
+  $("#anthropicFields").hidden = p !== "anthropic";
+  $("#geminiFields").hidden = p !== "gemini";
+}
+$("#providerSelect").addEventListener("change", toggleProviderFields);
 
 $("#saveSettingsBtn").addEventListener("click", () => {
   saveSettings({
-    apiKey: $("#apiKeyInput").value.trim(),
-    model: $("#modelSelect").value,
+    provider: $("#providerSelect").value,
+    anthropicKey: $("#anthropicKeyInput").value.trim(),
+    anthropicModel: $("#anthropicModelSelect").value,
+    geminiKey: $("#geminiKeyInput").value.trim(),
+    geminiModel: $("#geminiModelSelect").value,
     aiAutoReply: $("#aiAutoReply").checked,
   });
   $("#settingsSaved").textContent = "保存しました";
@@ -478,7 +616,7 @@ $("#importFile").addEventListener("change", async (e) => {
   if (!file) return;
   try {
     const text = await file.text();
-    if (!confirm("現在のポストをインポート内容で置き換えます。よろしいですか？")) return;
+    if (!confirm("現在のデータをインポート内容で置き換えます。よろしいですか？")) return;
     importJson(text);
     renderAll();
     alert("インポートしました");
@@ -490,7 +628,7 @@ $("#importFile").addEventListener("change", async (e) => {
 });
 
 $("#wipeBtn").addEventListener("click", () => {
-  if (!confirm("本当にすべてのポストを削除しますか？この操作は取り消せません。")) return;
+  if (!confirm("本当にすべての雑記とレポートを削除しますか？この操作は取り消せません。")) return;
   if (!confirm("最終確認：ブドウの木も種に戻ります。削除しますか？")) return;
   wipeAll();
   renderAll();
@@ -499,12 +637,12 @@ $("#wipeBtn").addEventListener("click", () => {
 // ---------- 初期化 ----------
 
 function renderAll() {
-  renderKindPicker();
   renderMoodPicker();
   renderFeed();
   renderSettings();
   updateVineBadge();
   updateTicker();
+  updatePendingBanner();
 }
 
 renderAll();

@@ -327,6 +327,55 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .modal h3 { margin-top: 0; font-size: .95rem; color: var(--grape); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
 
+/* ---------- pending banner ---------- */
+.pending-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: .82rem;
+}
+.pending-banner span { flex: 1; }
+.btn.small { padding: 4px 10px; font-size: .75rem; white-space: nowrap; }
+
+/* ---------- report ---------- */
+.report-card { border-color: var(--accent-soft); }
+.report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.report-period { color: var(--grape); font-size: .9rem; font-weight: bold; }
+.report-mood { color: var(--muted); font-size: .8rem; }
+.report-letter { white-space: pre-wrap; font-size: .9rem; }
+.report-details { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.report-details summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+.report-details summary:hover { color: var(--text); }
+.report-details h4 { font-size: .8rem; color: var(--grape); margin: 12px 0 4px; }
+.report-details p { margin: 4px 0; font-size: .85rem; }
+.report-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.theme-row { margin: 6px 0; font-size: .85rem; }
+.theme-name { font-weight: bold; }
+.theme-weight { color: var(--grape); font-size: .75rem; margin-left: 8px; }
+.theme-summary { color: var(--muted); font-size: .8rem; }
+.emotion-chip {
+  display: inline-block;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: .78rem;
+  margin: 2px 2px 2px 0;
+}
+#metaChart svg { width: 100%; height: auto; }
+
 @media (max-width: 480px) {
   :root { font-size: 14px; }
   .tabs { top: 49px; }
