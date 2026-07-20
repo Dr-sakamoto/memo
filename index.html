@@ -150,8 +150,18 @@
       <p class="muted">すべてのデータ（雑記＋レポート）はこのブラウザに保存されています。バックアップと引っ越しはここから。レポートは固定スキーマのJSONなので、他のツールやAIにもそのまま渡せます。</p>
       <div class="row-gap">
         <button class="btn" id="exportBtn">エクスポート（JSON）</button>
+        <button class="btn" id="shareExportBtn" hidden>共有でエクスポート</button>
+        <button class="btn" id="copyExportBtn">クリップボードにコピー</button>
         <label class="btn file-btn">インポート<input type="file" id="importFile" accept="application/json" hidden></label>
       </div>
+      <span id="dataActionMsg" class="muted"></span>
+      <details class="report-details">
+        <summary>貼り付けてインポート（スマホ向け）</summary>
+        <textarea id="importPasteArea" rows="6" placeholder="ここにバックアップJSONを貼り付け"></textarea>
+        <div class="row-gap" style="margin-top:8px">
+          <button class="btn" id="importPasteBtn">貼り付けた内容をインポート</button>
+        </div>
+      </details>
       <hr>
       <button class="btn danger" id="wipeBtn">全データを削除</button>
     </div>

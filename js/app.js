@@ -602,13 +602,54 @@ $("#saveSettingsBtn").addEventListener("click", () => {
   setTimeout(() => { $("#settingsSaved").textContent = ""; }, 2000);
 });
 
+function backupFileName() {
+  return `cns-backup-${new Date().toISOString().slice(0, 10)}.json`;
+}
+
+function showDataMsg(text) {
+  $("#dataActionMsg").textContent = text;
+  setTimeout(() => { $("#dataActionMsg").textContent = ""; }, 2500);
+}
+
+function doImport(text) {
+  if (!confirm("現在のデータをインポート内容で置き換えます。よろしいですか？")) return;
+  importJson(text);
+  renderAll();
+  alert("インポートしました");
+}
+
 $("#exportBtn").addEventListener("click", () => {
   const blob = new Blob([exportJson()], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `cns-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = backupFileName();
   a.click();
   URL.revokeObjectURL(a.href);
+});
+
+if (navigator.share && navigator.canShare) {
+  const testFile = new File(["{}"], "test.json", { type: "application/json" });
+  if (navigator.canShare({ files: [testFile] })) {
+    $("#shareExportBtn").hidden = false;
+  }
+}
+
+$("#shareExportBtn").addEventListener("click", async () => {
+  const file = new File([exportJson()], backupFileName(), { type: "application/json" });
+  try {
+    await navigator.share({ files: [file], title: "MEMO バックアップ" });
+  } catch (err) {
+    if (err.name !== "AbortError") alert(`共有に失敗しました: ${err.message}`);
+  }
+});
+
+$("#copyExportBtn").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(exportJson());
+    showDataMsg("クリップボードにコピーしました");
+  } catch (err) {
+    alert(`コピーに失敗しました: ${err.message}`);
+  }
 });
 
 $("#importFile").addEventListener("change", async (e) => {
@@ -616,14 +657,22 @@ $("#importFile").addEventListener("change", async (e) => {
   if (!file) return;
   try {
     const text = await file.text();
-    if (!confirm("現在のデータをインポート内容で置き換えます。よろしいですか？")) return;
-    importJson(text);
-    renderAll();
-    alert("インポートしました");
+    doImport(text);
   } catch (err) {
     alert(`インポート失敗: ${err.message}`);
   } finally {
     e.target.value = "";
+  }
+});
+
+$("#importPasteBtn").addEventListener("click", () => {
+  const text = $("#importPasteArea").value.trim();
+  if (!text) { alert("JSONを貼り付けてください"); return; }
+  try {
+    doImport(text);
+    $("#importPasteArea").value = "";
+  } catch (err) {
+    alert(`インポート失敗: ${err.message}`);
   }
 });
 
