@@ -646,3 +646,10 @@ function renderAll() {
 }
 
 renderAll();
+
+// ---------- Service Worker登録（オフライン起動用。失敗しても致命的ではないので無視する） ----------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
