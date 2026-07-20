@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MEMO — 自分だけのCNS</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍇</text></svg>">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <h1 class="logo">🍇 MEMO <span class="logo-sub">Closed Network Service</span></h1>
+    <div class="vine-badge" id="vineBadge" title="ブドウの木の成長段階"></div>
+  </div>
+</header>
+
+<!-- 電光掲示板（発芽後に解禁） -->
+<div class="ticker-wrap" id="tickerWrap" hidden>
+  <div class="ticker-label">過去の自分</div>
+  <div class="ticker-viewport">
+    <div class="ticker-track" id="tickerTrack"></div>
+  </div>
+</div>
+<div class="ticker-locked" id="tickerLocked" hidden>
+  🌱 <span id="tickerLockedMsg"></span>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-view="timeline">タイムライン</button>
+  <button class="tab" data-view="timeaxis">時間軸</button>
+  <button class="tab" data-view="vine">ブドウの木</button>
+  <button class="tab" data-view="analysis">分析</button>
+  <button class="tab" data-view="settings">設定</button>
+</nav>
+
+<main class="main">
+
+  <!-- ===== タイムライン ===== -->
+  <section class="view" id="view-timeline">
+    <div class="composer card">
+      <div class="composer-kinds" id="kindPicker"></div>
+      <textarea id="composerText" rows="3" placeholder="いま、なにを考えている？"></textarea>
+      <div class="composer-footer">
+        <div class="mood-picker" id="moodPicker" title="いまの気分"></div>
+        <div class="composer-actions">
+          <span class="char-count" id="charCount"></span>
+          <button class="btn primary" id="postBtn">刻む</button>
+        </div>
+      </div>
+    </div>
+    <div class="feed" id="feed"></div>
+  </section>
+
+  <!-- ===== 時間軸 ===== -->
+  <section class="view" id="view-timeaxis" hidden>
+    <p class="view-desc">過去の自分と再会する。同じ季節・同じ日付の周辺に、あなたは何を刻んでいたか。</p>
+    <div id="timeaxisBody"></div>
+  </section>
+
+  <!-- ===== ブドウの木 ===== -->
+  <section class="view" id="view-vine" hidden>
+    <div class="card vine-card">
+      <div id="vineSvgWrap"></div>
+      <div class="vine-info" id="vineInfo"></div>
+    </div>
+  </section>
+
+  <!-- ===== 分析 ===== -->
+  <section class="view" id="view-analysis" hidden>
+    <div class="card">
+      <h2>感情の推移（30日）</h2>
+      <div id="moodChart"></div>
+    </div>
+    <div class="card">
+      <h2>ローカル統計</h2>
+      <div id="localStats"></div>
+    </div>
+    <div class="card">
+      <h2>AIの目 — もうひとつの視点</h2>
+      <p class="muted">AIがあなたの記録を読み、感情の傾向・見落としている視点・次の一手を提案します。</p>
+      <div class="ai-controls">
+        <select id="aiPeriod">
+          <option value="7">直近1週間</option>
+          <option value="30">直近1ヶ月</option>
+          <option value="365">直近1年</option>
+          <option value="1825">直近5年</option>
+          <option value="3650">直近10年</option>
+        </select>
+        <button class="btn primary" id="aiAnalyzeBtn">分析を依頼する</button>
+      </div>
+      <div id="aiResult" class="ai-result"></div>
+    </div>
+  </section>
+
+  <!-- ===== 設定 ===== -->
+  <section class="view" id="view-settings" hidden>
+    <div class="card">
+      <h2>AI設定</h2>
+      <p class="muted">Anthropic APIキーを設定すると、AIが「唯一の他者」としてあなたの記録に応答します。キーはこのブラウザのlocalStorageにのみ保存され、Anthropic API以外には送信されません。</p>
+      <label class="field">
+        <span>Anthropic APIキー</span>
+        <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+      </label>
+      <label class="field">
+        <span>モデル</span>
+        <select id="modelSelect">
+          <option value="claude-opus-4-8">Claude Opus 4.8（推奨）</option>
+          <option value="claude-sonnet-5">Claude Sonnet 5</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5（高速・低コスト）</option>
+        </select>
+      </label>
+      <label class="field checkbox">
+        <input type="checkbox" id="aiAutoReply">
+        <span>ポストにAIがときどき返信する（唯一のフォロワー）</span>
+      </label>
+      <button class="btn primary" id="saveSettingsBtn">保存</button>
+      <span id="settingsSaved" class="muted"></span>
+    </div>
+    <div class="card">
+      <h2>データ</h2>
+      <p class="muted">すべてのデータはこのブラウザに保存されています。バックアップと引っ越しはここから。</p>
+      <div class="row-gap">
+        <button class="btn" id="exportBtn">エクスポート（JSON）</button>
+        <label class="btn file-btn">インポート<input type="file" id="importFile" accept="application/json" hidden></label>
+      </div>
+      <hr>
+      <button class="btn danger" id="wipeBtn">全データを削除</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- 引用モーダル -->
+<div class="modal-backdrop" id="quoteModal" hidden>
+  <div class="modal card">
+    <h3>引用して刻む（接ぎ木）</h3>
+    <blockquote id="quoteTarget"></blockquote>
+    <textarea id="quoteText" rows="3" placeholder="過去の自分に、いまの自分は何を重ねる？"></textarea>
+    <div class="modal-actions">
+      <button class="btn" id="quoteCancelBtn">やめる</button>
+      <button class="btn primary" id="quoteSubmitBtn">刻む</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
