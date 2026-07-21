@@ -492,13 +492,13 @@ function renderMetaAnalysis() {
   const pts = series.map((s, i) => ({ x: pad + i * step, y: y(s.mood), s }));
   const line = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
   const dots = pts.map((p) =>
-    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${p.s.mood >= 0 ? "#cfd66a" : "#6a9ad6"}"><title>${p.s.label}: ${p.s.mood.toFixed(1)}</title></circle>`
+    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${p.s.mood >= 0 ? "#a9b23f" : "#3f78c2"}"><title>${p.s.label}: ${p.s.mood.toFixed(1)}</title></circle>`
   ).join("");
   $("#metaChart").innerHTML = `
     <p class="muted">他者の目が観測した気分スコアの推移（レポートごと）</p>
     <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-      <line x1="${pad}" y1="${H / 2}" x2="${W - pad}" y2="${H / 2}" stroke="#383150" stroke-dasharray="4 4"/>
-      <path d="${line}" stroke="#8f6ee0" stroke-width="2" fill="none"/>
+      <line x1="${pad}" y1="${H / 2}" x2="${W - pad}" y2="${H / 2}" stroke="#e6e1f2" stroke-dasharray="4 4"/>
+      <path d="${line}" stroke="#7c3aed" stroke-width="2" fill="none"/>
       ${dots}
     </svg>`;
 
@@ -542,15 +542,15 @@ function renderMoodChart() {
   const zero = H / 2;
   const line = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
   const dots = pts.map((p) =>
-    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="${p.avg >= 0 ? "#cfd66a" : "#6a9ad6"}"><title>${p.key}: ${p.avg.toFixed(1)}</title></circle>`
+    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="${p.avg >= 0 ? "#a9b23f" : "#3f78c2"}"><title>${p.key}: ${p.avg.toFixed(1)}</title></circle>`
   ).join("");
 
   $("#moodChart").innerHTML = `
     <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-      <line x1="${pad}" y1="${zero}" x2="${W - pad}" y2="${zero}" stroke="#383150" stroke-dasharray="4 4"/>
-      <text x="${pad}" y="${pad - 8}" font-size="10" fill="#9a92b5">+2</text>
-      <text x="${pad}" y="${H - pad + 16}" font-size="10" fill="#9a92b5">-2</text>
-      ${pts.length > 1 ? `<path d="${line}" stroke="#8f6ee0" stroke-width="2" fill="none"/>` : ""}
+      <line x1="${pad}" y1="${zero}" x2="${W - pad}" y2="${zero}" stroke="#e6e1f2" stroke-dasharray="4 4"/>
+      <text x="${pad}" y="${pad - 8}" font-size="10" fill="#8d84a3">+2</text>
+      <text x="${pad}" y="${H - pad + 16}" font-size="10" fill="#8d84a3">-2</text>
+      ${pts.length > 1 ? `<path d="${line}" stroke="#7c3aed" stroke-width="2" fill="none"/>` : ""}
       ${dots}
     </svg>`;
 }
