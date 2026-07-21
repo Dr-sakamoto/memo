@@ -19,6 +19,8 @@ const DEFAULT_SETTINGS = {
   geminiKey: "",
   geminiModel: "gemini-2.5-flash",
   aiAutoReply: false,
+  reportWorkflow: "auto",           // "auto" | "force" | "single"（レポート生成の多段解析モード）
+  freeTierRpm: 10,                  // 無料枠対策のAPIレート上限（毎分）
 };
 
 function load(key, fallback) {
