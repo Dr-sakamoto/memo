@@ -52,11 +52,11 @@ export function renderVineSvg(activeDays, totalPosts, bunches) {
   const parts = [];
 
   // 土
-  parts.push(`<ellipse cx="${W / 2}" cy="${H - 12}" rx="90" ry="10" fill="#2a2237"/>`);
+  parts.push(`<ellipse cx="${W / 2}" cy="${H - 12}" rx="90" ry="10" fill="#ded6f0"/>`);
 
   if (activeDays === 0) {
     parts.push(`<circle cx="${W / 2}" cy="${H - 18}" r="7" fill="#8a6a4a"/>`);
-    parts.push(`<text x="${W / 2}" y="${H - 40}" text-anchor="middle" font-size="12" fill="#9a92b5">最初のひと粒を刻もう</text>`);
+    parts.push(`<text x="${W / 2}" y="${H - 40}" text-anchor="middle" font-size="12" fill="#8d84a3">最初のひと粒を刻もう</text>`);
     return svgWrap(W, H, parts.join(""));
   }
 
@@ -108,7 +108,7 @@ export function renderVineSvg(activeDays, totalPosts, bunches) {
       for (let g = 0; g < 6; g++) {
         const ang = (g / 6) * Math.PI * 2;
         const rr = g === 0 ? 0 : 5;
-        parts.push(`<circle cx="${(gx + Math.cos(ang) * rr).toFixed(1)}" cy="${(gy + 4 + Math.sin(ang) * rr * 0.8 + (g > 2 ? 4 : 0)).toFixed(1)}" r="3.4" fill="#b88ae8" stroke="#8f6ee0" stroke-width=".5"/>`);
+        parts.push(`<circle cx="${(gx + Math.cos(ang) * rr).toFixed(1)}" cy="${(gy + 4 + Math.sin(ang) * rr * 0.8 + (g > 2 ? 4 : 0)).toFixed(1)}" r="3.4" fill="#b88ae8" stroke="#7c3aed" stroke-width=".5"/>`);
       }
     }
   }
@@ -116,7 +116,7 @@ export function renderVineSvg(activeDays, totalPosts, bunches) {
   // 発芽前は小さな芽だけ
   if (activeDays < 7) {
     parts.length = 0;
-    parts.push(`<ellipse cx="${W / 2}" cy="${H - 12}" rx="90" ry="10" fill="#2a2237"/>`);
+    parts.push(`<ellipse cx="${W / 2}" cy="${H - 12}" rx="90" ry="10" fill="#ded6f0"/>`);
     const h = 12 + activeDays * 4;
     parts.push(`<path d="M ${baseX} ${baseY} L ${baseX} ${baseY - h}" stroke="#7ec27a" stroke-width="3" stroke-linecap="round"/>`);
     parts.push(`<ellipse cx="${baseX - 6}" cy="${baseY - h}" rx="7" ry="4" fill="#7ec27a" transform="rotate(-30 ${baseX - 6} ${baseY - h})"/>`);
