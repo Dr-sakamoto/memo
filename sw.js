@@ -1,7 +1,7 @@
 // アプリシェルのオフラインキャッシュ。データはlocalStorageのみで、SWはUIの資産だけを扱う。
 // 更新手順: デプロイでシェルの中身を変えたら CACHE_VERSION を上げること。
 // 上げないとブラウザがsw.js自体の変更を検知できず、古いキャッシュが延々と配信され続ける。
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const CACHE_NAME = `memo-shell-${CACHE_VERSION}`;
 
 const SHELL_ASSETS = [
@@ -13,6 +13,7 @@ const SHELL_ASSETS = [
   "./js/mass.js",
   "./js/report.js",
   "./js/store.js",
+  "./js/sync.js",
   "./js/vine.js",
   "./js/workflow.js",
   "./manifest.webmanifest",
@@ -73,6 +74,8 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (API_HOSTS.includes(url.hostname)) return; // 素通し。respondWithしないのでブラウザが直接ネットワークへ
+  // クラウド同期（Supabase）も絶対にキャッシュしない。常に最新をネットワークから取得する。
+  if (url.hostname.endsWith(".supabase.co")) return;
 
   event.respondWith(cacheFirst(request));
 });

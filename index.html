@@ -160,6 +160,57 @@
       <span id="settingsSaved" class="muted"></span>
     </div>
     <div class="card">
+      <h2>☁️ クラウド同期（スマホ⇔パソコン）</h2>
+      <p class="muted">自分で用意したSupabaseに、雑記＋レポートを同期します。両方の端末で同じアカウントにログインすれば、書いた内容が自動でもう一方にも反映されます。<b>AIキーなどの設定は同期されません（端末ごとに保持）。</b> セットアップ手順は <code>docs/supabase-setup.sql</code> を参照。</p>
+
+      <!-- 接続先の設定 -->
+      <details class="report-details" id="syncConfigDetails">
+        <summary>接続先の設定（初回のみ）</summary>
+        <label class="field">
+          <span>Supabase プロジェクトURL</span>
+          <input type="text" id="syncUrlInput" placeholder="https://xxxx.supabase.co">
+        </label>
+        <label class="field">
+          <span>公開キー（anon / publishable key）</span>
+          <input type="password" id="syncAnonInput" placeholder="eyJhbGci... または sb_publishable_...">
+        </label>
+        <button class="btn" id="syncConfigSaveBtn">接続先を保存</button>
+        <span id="syncConfigMsg" class="muted"></span>
+      </details>
+
+      <!-- ログイン（未ログイン時） -->
+      <div id="syncAuthBox" hidden>
+        <label class="field">
+          <span>メールアドレス</span>
+          <input type="email" id="syncEmailInput" placeholder="you@example.com" autocomplete="username">
+        </label>
+        <label class="field">
+          <span>パスワード</span>
+          <input type="password" id="syncPasswordInput" placeholder="8文字以上" autocomplete="current-password">
+        </label>
+        <div class="row-gap">
+          <button class="btn primary" id="syncLoginBtn">ログイン</button>
+          <button class="btn" id="syncSignupBtn">新規登録</button>
+        </div>
+        <span id="syncAuthMsg" class="muted"></span>
+      </div>
+
+      <!-- 同期状態（ログイン時） -->
+      <div id="syncStatusBox" hidden>
+        <p class="sync-status"><span class="sync-dot" id="syncDot"></span><span id="syncStatusText"></span></p>
+        <label class="field checkbox">
+          <input type="checkbox" id="syncAutoToggle">
+          <span>自動同期（起動時・変更時・画面復帰時に同期）</span>
+        </label>
+        <div class="row-gap">
+          <button class="btn primary" id="syncNowBtn">今すぐ同期</button>
+          <button class="btn" id="syncLogoutBtn">ログアウト</button>
+        </div>
+        <p class="muted" id="syncNote"></p>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>データ</h2>
       <p class="muted">すべてのデータ（雑記＋レポート）はこのブラウザに保存されています。バックアップと引っ越しはここから。レポートは固定スキーマのJSONなので、他のツールやAIにもそのまま渡せます。</p>
       <div class="row-gap">
