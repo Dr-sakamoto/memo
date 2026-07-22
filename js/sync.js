@@ -14,6 +14,14 @@ import { snapshot, replaceData } from "./store.js";
 const CONFIG_KEY = "cns.sync.config.v1";   // { url, anonKey, autoSync }
 const SESSION_KEY = "cns.sync.session.v1"; // { access_token, refresh_token, expires_at, user }
 
+// 既定の接続先。開発者があらかじめ用意したSupabaseプロジェクトを指す。
+// これにより利用者は接続先の入力を省き、ログインするだけで同期できる。
+// ここで使う anon(publishable) キーは「公開前提」の値で、RLSによって
+// ログイン本人の1行しか読み書きできないため、リポジトリに含めても安全。
+// 自分のSupabaseを使いたい場合は設定タブの「接続先の設定」で上書きできる。
+const DEFAULT_URL = "https://hpajnjqgqfgqeykdvnlw.supabase.co";
+const DEFAULT_ANON_KEY = "sb_publishable_kqZK4stgejuqBOf3Pf6zwA_zY8Yq6v7";
+
 // ---- 内部状態 ----
 
 let onApplied = () => {};      // マージ適用後に画面を再描画するコールバック
@@ -35,7 +43,9 @@ function readJson(key) {
 
 export function getConfig() {
   const c = readJson(CONFIG_KEY) || {};
-  return { url: (c.url || "").replace(/\/+$/, ""), anonKey: c.anonKey || "", autoSync: c.autoSync !== false };
+  const url = (c.url || DEFAULT_URL || "").replace(/\/+$/, "");
+  const anonKey = c.anonKey || DEFAULT_ANON_KEY || "";
+  return { url, anonKey, autoSync: c.autoSync !== false };
 }
 
 export function saveConfig(next) {

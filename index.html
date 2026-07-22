@@ -161,11 +161,11 @@
     </div>
     <div class="card">
       <h2>☁️ クラウド同期（スマホ⇔パソコン）</h2>
-      <p class="muted">自分で用意したSupabaseに、雑記＋レポートを同期します。両方の端末で同じアカウントにログインすれば、書いた内容が自動でもう一方にも反映されます。<b>AIキーなどの設定は同期されません（端末ごとに保持）。</b> セットアップ手順は <code>docs/supabase-setup.sql</code> を参照。</p>
+      <p class="muted">接続先はあらかじめ設定済みです。両方の端末で<b>同じアカウントでログイン</b>すれば、書いた内容が自動でもう一方にも反映されます。<b>AIキーなどの設定は同期されません（端末ごとに保持）。</b> 自分のSupabaseに切り替えたい場合は下の「接続先の設定」で上書きできます（手順は <code>docs/supabase-setup.sql</code>）。</p>
 
       <!-- 接続先の設定 -->
       <details class="report-details" id="syncConfigDetails">
-        <summary>接続先の設定（初回のみ）</summary>
+        <summary>接続先の設定（変更する場合のみ・通常は不要）</summary>
         <label class="field">
           <span>Supabase プロジェクトURL</span>
           <input type="text" id="syncUrlInput" placeholder="https://xxxx.supabase.co">
