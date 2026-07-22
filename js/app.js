@@ -5,7 +5,12 @@ import {
   getReports, deleteReport,
   activeDays, daysSinceFirstPost,
   exportJson, importJson, wipeAll,
+  onMutation,
 } from "./store.js";
+import {
+  initSync, getSyncState, saveConfig as saveSyncConfig,
+  signIn, signUp, signOut, syncNow, setAutoSync, scheduleAutoPush,
+} from "./sync.js";
 import { massOf, milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
 import { stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
 import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, currentModelLabel } from "./ai.js";
@@ -701,18 +706,124 @@ $("#wipeBtn").addEventListener("click", () => {
   renderAll();
 });
 
+// ---------- クラウド同期 ----------
+
+function fmtClock(d) {
+  if (!d) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function renderSyncUI() {
+  const st = getSyncState();
+
+  // 接続先が未設定なら「接続先の設定」を開いておく
+  $("#syncConfigDetails").open = !st.configured;
+
+  // ログインフォーム／同期状態の出し分け
+  $("#syncAuthBox").hidden = !st.configured || st.loggedIn;
+  $("#syncStatusBox").hidden = !st.loggedIn;
+
+  if (st.loggedIn) {
+    $("#syncAutoToggle").checked = st.autoSync;
+    const dot = $("#syncDot");
+    let text;
+    if (st.syncing) {
+      dot.className = "sync-dot syncing";
+      text = `同期中…（${st.email}）`;
+    } else if (st.lastError) {
+      dot.className = "sync-dot error";
+      text = `${st.email}｜エラー: ${st.lastError}`;
+    } else {
+      dot.className = "sync-dot ok";
+      text = st.lastSyncAt
+        ? `${st.email}｜最終同期 ${fmtClock(st.lastSyncAt)}`
+        : `${st.email}｜ログイン済み`;
+    }
+    $("#syncStatusText").textContent = text;
+    $("#syncNote").textContent = "※ 同期は「追記の統合」方式です。片方の端末での削除は、もう一方に残っていると復活することがあります。";
+  }
+}
+
+$("#syncConfigSaveBtn").addEventListener("click", () => {
+  const url = $("#syncUrlInput").value.trim();
+  const anonKey = $("#syncAnonInput").value.trim();
+  if (!url || !anonKey) { $("#syncConfigMsg").textContent = "URLと公開キーを入力してください"; return; }
+  saveSyncConfig({ url, anonKey });
+  $("#syncConfigMsg").textContent = "保存しました";
+  setTimeout(() => { $("#syncConfigMsg").textContent = ""; }, 2000);
+  renderSyncUI();
+});
+
+async function doAuth(kind) {
+  const email = $("#syncEmailInput").value.trim();
+  const password = $("#syncPasswordInput").value;
+  if (!email || !password) { $("#syncAuthMsg").textContent = "メールとパスワードを入力してください"; return; }
+  $("#syncAuthMsg").textContent = kind === "login" ? "ログイン中…" : "登録中…";
+  try {
+    if (kind === "signup") {
+      const { needsConfirmation } = await signUp(email, password);
+      if (needsConfirmation) {
+        $("#syncAuthMsg").textContent = "確認メールを送信しました。メール内のリンクを開いた後、ログインしてください。";
+        return;
+      }
+    } else {
+      await signIn(email, password);
+    }
+    $("#syncPasswordInput").value = "";
+    $("#syncAuthMsg").textContent = "";
+    renderSyncUI();
+    const st = await syncNow();
+    renderAll();
+    if (st.lastError) $("#syncAuthMsg").textContent = `同期エラー: ${st.lastError}`;
+  } catch (err) {
+    $("#syncAuthMsg").textContent = `失敗: ${err.message}`;
+  }
+}
+
+$("#syncLoginBtn").addEventListener("click", () => doAuth("login"));
+$("#syncSignupBtn").addEventListener("click", () => doAuth("signup"));
+
+$("#syncLogoutBtn").addEventListener("click", async () => {
+  await signOut();
+  renderSyncUI();
+});
+
+$("#syncNowBtn").addEventListener("click", async () => {
+  const btn = $("#syncNowBtn");
+  btn.disabled = true;
+  renderSyncUI();
+  const st = await syncNow();
+  renderAll();
+  btn.disabled = false;
+  if (st.lastError) alert(`同期エラー: ${st.lastError}`);
+});
+
+$("#syncAutoToggle").addEventListener("change", (e) => {
+  setAutoSync(e.target.checked);
+  if (e.target.checked) scheduleAutoPush();
+});
+
+// データ変更のたびに自動プッシュ（デバウンス）
+onMutation(() => scheduleAutoPush());
+
 // ---------- 初期化 ----------
 
 function renderAll() {
   renderMoodPicker();
   renderFeed();
   renderSettings();
+  renderSyncUI();
   updateVineBadge();
   updateTicker();
   updatePendingBanner();
 }
 
 renderAll();
+
+// クラウド同期の起動（設定済みかつログイン済みなら初回同期）
+initSync({
+  onApplied: () => renderAll(),
+});
 
 // ---------- Service Worker登録（オフライン起動用。失敗しても致命的ではないので無視する） ----------
 if ("serviceWorker" in navigator) {

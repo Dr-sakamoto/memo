@@ -36,6 +36,21 @@ function save(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+// ---- 変更通知（クラウド同期のためのフック） ----
+// データを書き換えるたびに購読者へ通知する。sync.js が受けて自動プッシュに使う。
+const mutationListeners = new Set();
+
+export function onMutation(cb) {
+  mutationListeners.add(cb);
+  return () => mutationListeners.delete(cb);
+}
+
+function notifyMutation() {
+  for (const cb of mutationListeners) {
+    try { cb(); } catch { /* 購読者の失敗は無視 */ }
+  }
+}
+
 let posts = load(POSTS_KEY, []);
 let reports = load(REPORTS_KEY, []);
 
@@ -105,6 +120,7 @@ export function addPost({ text, mood, type = "post", refId = null }) {
     }
   }
   save(POSTS_KEY, posts);
+  notifyMutation();
   return post;
 }
 
@@ -121,6 +137,7 @@ export function deletePost(id) {
   }
   posts = posts.filter((p) => p.id !== id);
   save(POSTS_KEY, posts);
+  notifyMutation();
 }
 
 export function setAiReply(id, text) {
@@ -128,6 +145,7 @@ export function setAiReply(id, text) {
   if (!post) return;
   post.aiReply = { text, at: new Date().toISOString() };
   save(POSTS_KEY, posts);
+  notifyMutation();
 }
 
 // ---- レポート（AIによる構造化解釈の蓄積） ----
@@ -143,12 +161,14 @@ export function hasReport(periodKey) {
 export function addReport(report) {
   reports.unshift(report);
   save(REPORTS_KEY, reports);
+  notifyMutation();
   return report;
 }
 
 export function deleteReport(id) {
   reports = reports.filter((r) => r.id !== id);
   save(REPORTS_KEY, reports);
+  notifyMutation();
 }
 
 export function newReportId() {
@@ -191,6 +211,25 @@ export function importJson(json) {
   reports = Array.isArray(data.reports) ? data.reports : [];
   save(POSTS_KEY, posts);
   save(REPORTS_KEY, reports);
+  notifyMutation();
+}
+
+// クラウド同期がマージ結果を反映するための差し替え。
+// リモート由来の適用なので notifyMutation は呼ばない（プッシュのループを避ける）。
+export function replaceData({ posts: nextPosts, reports: nextReports }) {
+  if (Array.isArray(nextPosts)) {
+    posts = nextPosts;
+    save(POSTS_KEY, posts);
+  }
+  if (Array.isArray(nextReports)) {
+    reports = nextReports;
+    save(REPORTS_KEY, reports);
+  }
+}
+
+// 同期対象の生データ（AIキーなどの設定は含めない）
+export function snapshot() {
+  return { posts, reports };
 }
 
 export function wipeAll() {

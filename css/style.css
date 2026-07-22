@@ -439,3 +439,29 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
     text-align: center;
   }
 }
+
+/* ---- クラウド同期 ---- */
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+  font-size: 14px;
+}
+.sync-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+.sync-dot.ok { background: var(--leaf); }
+.sync-dot.error { background: var(--danger); }
+.sync-dot.syncing {
+  background: var(--accent);
+  animation: sync-pulse 1s ease-in-out infinite;
+}
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
