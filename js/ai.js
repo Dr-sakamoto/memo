@@ -48,6 +48,15 @@ export function currentModelLabel() {
 
 // ---- プロバイダ呼び出し ----
 
+// APIエラーにHTTPステータス（と可能ならサーバー指定のリトライ待機）を載せる。
+// callAIPaced のバックオフ判定に使う。
+function apiError(message, status, retryAfterMs) {
+  const e = new Error(message);
+  if (status != null) e.status = status;
+  if (retryAfterMs != null) e.retryAfterMs = retryAfterMs;
+  return e;
+}
+
 async function callAnthropic({ system, user, maxTokens, jsonSchema }) {
   const s = getSettings();
   const body = {
@@ -71,7 +80,12 @@ async function callAnthropic({ system, user, maxTokens, jsonSchema }) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => null);
-    throw new Error(`Claude APIエラー: ${err?.error?.message || `HTTP ${res.status}`}`);
+    const retryAfter = Number(res.headers.get("retry-after"));
+    throw apiError(
+      `Claude APIエラー: ${err?.error?.message || `HTTP ${res.status}`}`,
+      res.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : null,
+    );
   }
   const data = await res.json();
   const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
@@ -101,7 +115,14 @@ async function callGemini({ system, user, maxTokens, jsonSchema }) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => null);
-    throw new Error(`Gemini APIエラー: ${err?.error?.message || `HTTP ${res.status}`}`);
+    // Geminiの429はerror.detailsにRetryInfo（retryDelay: "27s"）を返すことがある
+    const retryInfo = (err?.error?.details || []).find((d) => (d["@type"] || "").includes("RetryInfo"));
+    const secs = retryInfo?.retryDelay ? parseFloat(retryInfo.retryDelay) : NaN;
+    throw apiError(
+      `Gemini APIエラー: ${err?.error?.message || `HTTP ${res.status}`}`,
+      res.status,
+      Number.isFinite(secs) && secs > 0 ? secs * 1000 : null,
+    );
   }
   const data = await res.json();
   const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
@@ -118,6 +139,55 @@ export function callAI({ system, user, maxTokens = 2000, jsonSchema = null }) {
   }
   if (!s.anthropicKey) throw new Error("Anthropic APIキーが未設定です（設定タブから登録できます）");
   return callAnthropic({ system, user, maxTokens, jsonSchema });
+}
+
+// ---- 無料枠オーケストレーション（レート制御 + 429バックオフ） ----
+//
+// Geminiの無料枠は RPM（毎分リクエスト数）が厳しく、ワークフローは1レポートを
+// 複数回のAPI呼び出しに分割する。そのままだと即レート制限に触れるため:
+//   1) すべての呼び出しをモジュール内で直列化し、最小間隔（60秒 / RPM）を空ける
+//   2) 429/503/500 では指数バックオフで自動リトライ。サーバーがRetryInfo（Geminiの
+//      retryDelay）や Retry-After を返していればそれを優先する
+// これにより「用意されたワークフローをこなせば」無料枠のままでも生成が完走する。
+
+// 無料枠のRPMの目安（設定 freeTierRpm で上書き可能）
+export const FREE_TIER_RPM = { gemini: 10, anthropic: 50 };
+
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+let _queue = Promise.resolve(); // 直列化チェーン
+let _lastStartAt = 0;           // 直近リクエストの開始時刻
+
+function minIntervalMs() {
+  const s = getSettings();
+  const fallback = FREE_TIER_RPM[s.provider] || 10;
+  const rpm = Number(s.freeTierRpm) > 0 ? Number(s.freeTierRpm) : fallback;
+  return Math.ceil(60000 / Math.max(1, rpm));
+}
+
+// callAI をレート制御＋自動リトライで包む。ワークフローの各段はこれを使う。
+export function callAIPaced(opts, { retries = 4 } = {}) {
+  const run = async () => {
+    for (let attempt = 0; ; attempt++) {
+      // 直前の開始から最小間隔を空ける（RPM順守）
+      const wait = _lastStartAt + minIntervalMs() - Date.now();
+      if (wait > 0) await sleep(wait);
+      _lastStartAt = Date.now();
+      try {
+        return await callAI(opts);
+      } catch (err) {
+        const retriable = err.status === 429 || err.status === 503 || err.status === 500;
+        if (!retriable || attempt >= retries) throw err;
+        // サーバー指定の待機があれば尊重、なければ指数バックオフ（+ジッター、上限32秒）
+        const backoff = err.retryAfterMs || Math.min(32000, 1000 * 2 ** attempt) + Math.floor(Math.random() * 500);
+        await sleep(backoff);
+      }
+    }
+  };
+  // 成否にかかわらずキューを継続（次の呼び出しをブロックしない）
+  const result = _queue.then(run, run);
+  _queue = result.catch(() => {});
+  return result;
 }
 
 // コードフェンス等を許容するJSONパース

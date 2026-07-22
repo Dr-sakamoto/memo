@@ -6,7 +6,7 @@
 // どのAIプロバイダにも依存しない汎用データになる。
 
 import { getPosts, getReports, hasReport, addReport, newReportId, getSettings } from "./store.js";
-import { callAI, parseJsonLoose, formatPostsForPrompt, SYSTEM_PROMPT } from "./ai.js";
+import { runReportWorkflow } from "./workflow.js";
 
 export const REPORT_SCHEMA_VERSION = 1;
 
@@ -143,38 +143,20 @@ export function pendingWeekly(now = new Date()) {
 }
 
 // ---- 生成 ----
+//
+// 実際の整形アルゴリズム（正規化→抽出→統合→照合の多段パイプライン）は workflow.js に
+// 内包されており、無造作な雑記ログを毎回この固定スキーマに落とし込む。ここはドメインの
+// スキーマを注入してワークフローを回し、来歴（pipeline）付きでレポートを保存するだけ。
 
-function buildPrompt(period, posts) {
-  const body = formatPostsForPrompt(posts, { withIds: true });
-  const schemaHint = JSON.stringify(REPORT_SCHEMA.properties, null, 1);
-  return `以下は私の「${period.label}」の雑記（${posts.length}件）です。行頭の[id:...]は各ポストのIDです。
-
-全体を客観的な他者として読み、次のJSONスキーマに厳密に従った分析を返してください。JSON以外の文字は出力しないでください。
-
-スキーマ（各フィールドのdescriptionに従うこと）:
-${schemaHint}
-
----
-${body}`;
-}
-
-export async function generateReport(period) {
+export async function generateReport(period, { onProgress } = {}) {
   const posts = postsInRange(getPosts(), period.from, period.to);
   if (posts.length === 0) throw new Error("この期間のポストがありません");
 
   const s = getSettings();
-  const raw = await callAI({
-    system: SYSTEM_PROMPT,
-    user: buildPrompt(period, posts),
-    maxTokens: 4000,
-    jsonSchema: REPORT_SCHEMA,
+  const { data, pipeline } = await runReportWorkflow(period, posts, {
+    schema: REPORT_SCHEMA,
+    onProgress,
   });
-  const data = parseJsonLoose(raw);
-
-  // 最低限の検証
-  if (typeof data.letter !== "string" || !Array.isArray(data.themes)) {
-    throw new Error("AIの応答が分析フォーマットに合致しませんでした。もう一度お試しください");
-  }
 
   const report = {
     id: newReportId(),
@@ -188,6 +170,7 @@ export async function generateReport(period) {
     provider: s.provider,
     model: s.provider === "gemini" ? s.geminiModel : s.anthropicModel,
     createdAt: new Date().toISOString(),
+    pipeline, // 生成の来歴（mode / chunks / units / requests / topics）
     data,
   };
   addReport(report);

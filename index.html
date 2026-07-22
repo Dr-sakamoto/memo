@@ -142,6 +142,20 @@
         <input type="checkbox" id="aiAutoReply">
         <span>ポストにAIがときどき返信する（デフォルトOFF推奨。AIの基本の出番は週次レポート）</span>
       </label>
+      <hr>
+      <p class="muted">レポート生成ワークフロー。無造作な雑記を「小さく分けて抽出→統合」する多段解析で高精度化します。Geminiの無料枠でも完走できるよう、API呼び出しは自動で間隔調整＆レート超過時に自動リトライします。</p>
+      <label class="field">
+        <span>生成モード</span>
+        <select id="reportWorkflowSelect">
+          <option value="auto">自動（長い期間だけ多段解析・推奨）</option>
+          <option value="force">常に多段解析（最高精度・API回数は増える）</option>
+          <option value="single">常に一括（API 1回・無料枠を最大限節約）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>APIレート上限（毎分 / 無料枠対策）</span>
+        <input type="number" id="freeTierRpmInput" min="1" max="60" step="1" placeholder="10">
+      </label>
       <button class="btn primary" id="saveSettingsBtn">保存</button>
       <span id="settingsSaved" class="muted"></span>
     </div>
