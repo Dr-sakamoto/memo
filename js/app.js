@@ -150,7 +150,7 @@ async function maybeAutoReply(post) {
 
 // ---------- フィード ----------
 
-function postHtml(post, { showActions = true, thread = true, threadTop = false, threadBottom = false } = {}) {
+function postHtml(post, { showActions = true, grouped = false, isCont = false } = {}) {
   const ref = post.refId ? getPost(post.refId) : null;
 
   let repostNote = "";
@@ -177,17 +177,11 @@ function postHtml(post, { showActions = true, thread = true, threadTop = false, 
       <button class="pa-btn danger" data-action="delete" data-id="${post.id}">削除</button>
     </div>` : "";
 
-  // 連の装飾（蔓・地色・チップ）は、連が続けて並ぶフィードでのみ意味を持つ。
-  // 時間軸など飛び飛びに並べる場所では thread:false で無効化する。
-  const inThread = thread && Boolean(post.threadId);
-  const isCont = inThread && !threadBottom; // 連の先頭（最古）以外は「続き」
-  let threadClass = "";
-  if (inThread) {
-    threadClass = " thread-post";
-    if (threadTop) threadClass += " thread-top";
-    if (threadBottom) threadClass += " thread-bottom";
-  }
-  const threadMark = isCont ? `<span class="thread-mark" title="さっきの続き（同じ一息）">↳ 続き</span>` : "";
+  // 連（スレッド）の一員として描くときは grouped=true。枠・角丸・余白を外し、
+  // 親の .thread ブロックに密着させて「1つのまとまり」に見せる。
+  // isCont（連の先頭＝最古以外）には控えめな「↳」で続きを示す。
+  const threadClass = grouped ? " thread-item" : "";
+  const threadMark = isCont ? `<span class="thread-mark" title="さっきの続き（同じ一息）">↳</span>` : "";
 
   return `
   <article class="post${threadClass}" data-id="${post.id}">
@@ -212,26 +206,35 @@ function renderFeed() {
     return;
   }
   // 連（スレッド）は時間的に連続した通常投稿の塊。フィードは新しい順なので、
-  // 一つ新しい隣（index-1）／古い隣（index+1）と同じ threadId かどうかで、
-  // 連の先頭（最新・上端）・末尾（最古・下端）を判定し、左の「蔓（つる）」で束ねて描く。
-  // 繋がっている2投稿の間には、蔓を断ち切れるハサミ（切り離しボタン）を挟む。
+  // 同じ threadId が並ぶ範囲をひとまとめにし、間を空けず1つの .thread ブロックに包む。
+  // 投稿どうしの継ぎ目は薄い区切り線だけにして「1つのまとまり」に見せ、
+  // その線の端に小さなハサミを置いて、そこから連を断ち切れるようにする。
   const parts = [];
-  posts.forEach((p, i) => {
-    const newer = posts[i - 1];
-    const older = posts[i + 1];
-    const inThread = Boolean(p.threadId);
-    const sameNewer = inThread && newer && newer.threadId === p.threadId;
-    const sameOlder = inThread && older && older.threadId === p.threadId;
-    const threadTop = inThread && !sameNewer;      // 連の最新（上端）
-    const threadBottom = inThread && !sameOlder;   // 連の最古（下端＝始まり）
-    parts.push(postHtml(p, { threadTop, threadBottom }));
-    if (sameOlder) {
-      parts.push(`
-      <div class="thread-link">
-        <button class="thread-cut-btn" data-action="cut-thread" data-id="${p.id}" title="ここで連を切り離す">✂️<span class="cut-label">切り離す</span></button>
-      </div>`);
-    }
-  });
+  let i = 0;
+  while (i < posts.length) {
+    const p = posts[i];
+    if (!p.threadId) { parts.push(postHtml(p)); i++; continue; }
+
+    // 同じ連の連続範囲（新しい順に group[0]=最新 … 末尾=最古）
+    let j = i;
+    while (j + 1 < posts.length && posts[j + 1].threadId === p.threadId) j++;
+    const group = posts.slice(i, j + 1);
+
+    const inner = [];
+    group.forEach((gp, k) => {
+      const isOldest = k === group.length - 1;
+      inner.push(postHtml(gp, { grouped: true, isCont: !isOldest }));
+      if (!isOldest) {
+        // gp（新しい側）と次（古い側）の継ぎ目。切り離しは新しい側のidで行う。
+        inner.push(`
+        <div class="thread-seam">
+          <button class="thread-cut-btn" data-action="cut-thread" data-id="${gp.id}" title="ここで連を切り離す" aria-label="ここで連を切り離す">✂️</button>
+        </div>`);
+      }
+    });
+    parts.push(`<div class="thread">${inner.join("")}</div>`);
+    i = j + 1;
+  }
   $("#feed").innerHTML = parts.join("");
 }
 
@@ -397,7 +400,7 @@ function renderTimeaxis() {
     const hits = posts.filter((p) => Math.abs(ageInDays(p, now) - days) <= win);
     const dateStr = `${target.getFullYear()}/${target.getMonth() + 1}/${target.getDate()} 前後`;
     const body = hits.length
-      ? hits.map((p) => postHtml(p, { thread: false })).join("")
+      ? hits.map((p) => postHtml(p)).join("")
       : `<p class="axis-empty">この頃の記録はまだない。${days > daysSinceFirstPost() ? "未来のあなたがこの欄を埋める。" : ""}</p>`;
     return `<div class="axis-section"><h3>${label}の自分 <span class="axis-date">${dateStr}</span></h3>${body}</div>`;
   });
