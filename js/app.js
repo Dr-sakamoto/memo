@@ -150,7 +150,7 @@ async function maybeAutoReply(post) {
 
 // ---------- フィード ----------
 
-function postHtml(post, { showActions = true, threadCont = false } = {}) {
+function postHtml(post, { showActions = true, thread = true, threadTop = false, threadBottom = false } = {}) {
   const ref = post.refId ? getPost(post.refId) : null;
 
   let repostNote = "";
@@ -177,8 +177,17 @@ function postHtml(post, { showActions = true, threadCont = false } = {}) {
       <button class="pa-btn danger" data-action="delete" data-id="${post.id}">削除</button>
     </div>` : "";
 
-  const threadClass = post.threadId ? (threadCont ? " thread-cont" : " thread-head") : "";
-  const threadMark = threadCont ? `<span class="thread-mark" title="さっきの続き（同じ一息）">↳</span>` : "";
+  // 連の装飾（蔓・地色・チップ）は、連が続けて並ぶフィードでのみ意味を持つ。
+  // 時間軸など飛び飛びに並べる場所では thread:false で無効化する。
+  const inThread = thread && Boolean(post.threadId);
+  const isCont = inThread && !threadBottom; // 連の先頭（最古）以外は「続き」
+  let threadClass = "";
+  if (inThread) {
+    threadClass = " thread-post";
+    if (threadTop) threadClass += " thread-top";
+    if (threadBottom) threadClass += " thread-bottom";
+  }
+  const threadMark = isCont ? `<span class="thread-mark" title="さっきの続き（同じ一息）">↳ 続き</span>` : "";
 
   return `
   <article class="post${threadClass}" data-id="${post.id}">
@@ -203,18 +212,23 @@ function renderFeed() {
     return;
   }
   // 連（スレッド）は時間的に連続した通常投稿の塊。フィードは新しい順なので、
-  // 一つ古い隣（index+1）が同じ threadId なら「続き」として繋げて描画する。
-  // 繋がっている2投稿の間には、繋がりが見てわかる連結バー（切り離しボタン付き）を挟む。
+  // 一つ新しい隣（index-1）／古い隣（index+1）と同じ threadId かどうかで、
+  // 連の先頭（最新・上端）・末尾（最古・下端）を判定し、左の「蔓（つる）」で束ねて描く。
+  // 繋がっている2投稿の間には、蔓を断ち切れるハサミ（切り離しボタン）を挟む。
   const parts = [];
   posts.forEach((p, i) => {
+    const newer = posts[i - 1];
     const older = posts[i + 1];
-    const threadCont = Boolean(p.threadId && older && older.threadId === p.threadId);
-    parts.push(postHtml(p, { threadCont }));
-    if (threadCont) {
+    const inThread = Boolean(p.threadId);
+    const sameNewer = inThread && newer && newer.threadId === p.threadId;
+    const sameOlder = inThread && older && older.threadId === p.threadId;
+    const threadTop = inThread && !sameNewer;      // 連の最新（上端）
+    const threadBottom = inThread && !sameOlder;   // 連の最古（下端＝始まり）
+    parts.push(postHtml(p, { threadTop, threadBottom }));
+    if (sameOlder) {
       parts.push(`
       <div class="thread-link">
-        <span class="thread-link-line" aria-hidden="true"></span>
-        <button class="thread-cut-btn" data-action="cut-thread" data-id="${p.id}" title="ここで連を切り離す">✂️ 切り離す</button>
+        <button class="thread-cut-btn" data-action="cut-thread" data-id="${p.id}" title="ここで連を切り離す">✂️<span class="cut-label">切り離す</span></button>
       </div>`);
     }
   });
@@ -383,7 +397,7 @@ function renderTimeaxis() {
     const hits = posts.filter((p) => Math.abs(ageInDays(p, now) - days) <= win);
     const dateStr = `${target.getFullYear()}/${target.getMonth() + 1}/${target.getDate()} 前後`;
     const body = hits.length
-      ? hits.map((p) => postHtml(p)).join("")
+      ? hits.map((p) => postHtml(p, { thread: false })).join("")
       : `<p class="axis-empty">この頃の記録はまだない。${days > daysSinceFirstPost() ? "未来のあなたがこの欄を埋める。" : ""}</p>`;
     return `<div class="axis-section"><h3>${label}の自分 <span class="axis-date">${dateStr}</span></h3>${body}</div>`;
   });

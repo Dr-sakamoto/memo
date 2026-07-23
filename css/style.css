@@ -9,6 +9,8 @@
   --accent: #7c3aed;
   --accent-soft: #ede7fc;
   --grape: #6d28d9;
+  --vine: #7c3aed;          /* 連（スレッド）を束ねる蔓の色 */
+  --thread-tint: #faf7ff;   /* 連に属する投稿の淡い地色 */
   --leaf: #3f9350;
   --danger: #dc2626;
   --mood-p2: #c98a1f;
@@ -225,43 +227,94 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
   background: var(--accent-soft);
   color: var(--grape);
 }
-/* 連（スレッド）: 連続した「同じ一息」の投稿を左の色付きレールで束ねて見せる */
-.thread-head, .thread-cont { border-left: 3px solid var(--accent-soft); }
-.thread-cont { margin-bottom: 0; }
-.thread-mark { color: var(--accent); font-weight: 700; margin-right: 2px; }
-
-/* 連の継ぎ目: 2つのカードの間に繋がりを見せる連結バー。押すとそこで切り離せる */
-.thread-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 24px;
-  margin: 0 0 10px 0;
-  padding-left: 17px;
+/* ===== 連（スレッド）＝「同じ一息」のまとまり =====
+   連に属する投稿は、左に伸びる1本の「蔓（つる）」で束ねて見せる。
+   束ねられているのが一目でわかり、継ぎ目のハサミで断ち切れる。 */
+.post.thread-post {
   position: relative;
+  margin-left: 18px;               /* 左に蔓のスペースを空ける */
+  margin-bottom: 0;                /* 連の中はくっつけて1本に見せる */
+  border-color: var(--accent-soft);
+  background: var(--thread-tint);
+  border-radius: 6px 12px 12px 6px;
 }
-.thread-link-line {
+/* 左の蔓（各カードの高さ分の縦線。継ぎ目のバーが上下をつなぐので連続して1本に見える） */
+.post.thread-post::before {
+  content: "";
   position: absolute;
-  left: 0;
+  left: -18px;
   top: 0;
   bottom: 0;
-  width: 3px;
-  background: var(--accent-soft);
+  width: 6px;
+  background: var(--vine);
 }
-.thread-cut-btn {
-  background: none;
-  border: 1px solid transparent;
-  color: var(--muted);
-  font-size: .72rem;
-  cursor: pointer;
-  padding: 2px 8px;
+/* 連の先頭（最新・上端）は蔓の上を丸く、末尾（最古＝始まり・下端）は下を丸く＋余白 */
+.post.thread-post.thread-top::before { top: 6px; border-radius: 4px 4px 0 0; }
+.post.thread-post.thread-bottom::before { bottom: 6px; border-radius: 0 0 4px 4px; }
+.post.thread-post.thread-top.thread-bottom::before { top: 6px; bottom: 6px; border-radius: 4px; }
+.post.thread-post.thread-bottom { margin-bottom: 10px; }
+/* 「↳ 続き」チップ：同じ連の続きであることを明示 */
+.thread-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--grape);
+  font-weight: 700;
+  font-size: .68rem;
+  background: var(--accent-soft);
+  padding: 0 7px;
   border-radius: 999px;
   line-height: 1.6;
 }
+
+/* 連の継ぎ目: 2枚のカードの間で蔓が続く。中央のハサミで、そこから断ち切れる */
+.thread-link {
+  position: relative;
+  height: 30px;
+  margin: 0 0 0 18px;
+}
+.thread-link::before {              /* 継ぎ目を貫く蔓（上下のカードと連続） */
+  content: "";
+  position: absolute;
+  left: -18px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--vine);
+}
+/* 蔓の上に乗るハサミ。押すと連をここで断ち切る */
+.thread-cut-btn {
+  position: absolute;
+  left: -23px;              /* ハサミが蔓の上に重なり、ラベルは右の空きへ伸びる */
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 3px 11px 3px 9px;
+  border-radius: 999px;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(42, 36, 56, .12);
+  transition: color .12s, background .12s, border-color .12s, box-shadow .12s;
+}
 .thread-cut-btn:hover, .thread-cut-btn:focus-visible {
-  color: var(--danger);
-  background: var(--card-2);
-  border-color: var(--line);
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+  box-shadow: 0 2px 10px rgba(220, 38, 38, .4);
+}
+/* ハサミにホバー中は、切られる蔓を破線（＝これから断ち切る）で予告する */
+.thread-link:has(.thread-cut-btn:hover)::before,
+.thread-link:has(.thread-cut-btn:focus-visible)::before {
+  background: repeating-linear-gradient(var(--danger) 0 4px, transparent 4px 8px);
 }
 
 /* コンポーザーの連ヒント（続きになる／新しい連にする） */
