@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   aiAutoReply: false,
   reportWorkflow: "auto",           // "auto" | "force" | "single"（レポート生成の多段解析モード）
   freeTierRpm: 10,                  // 無料枠対策のAPIレート上限（毎分）
+  threadWindowMin: 5,               // 連（スレッド）: 直前の投稿からこの分数以内なら「同じ一息」として自動で束ねる
 };
 
 function load(key, fallback) {
@@ -102,7 +103,9 @@ export function extractTags(text) {
 }
 
 // type: "post" | "repost" | "quote"
-export function addPost({ text, mood, type = "post", refId = null }) {
+// standalone: true にすると連（スレッド）への自動連結を抑止し、新しい話題として切る
+export function addPost({ text, mood, type = "post", refId = null, standalone = false }) {
+  const now = new Date();
   const post = {
     id: newId(),
     type,
@@ -111,12 +114,27 @@ export function addPost({ text, mood, type = "post", refId = null }) {
     mood: mood ?? null,
     tags: extractTags(text || ""),
     refId,
+    threadId: null,
     repostCount: 0,
     quoteCount: 0,
     aiReply: null,
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
   };
   posts.unshift(post);
+
+  // 連（スレッド）: 連続した通常投稿は「同じ一息」として自動で束ねる。
+  // 接ぎ木（意味の接続）とは別プリミティブなので、質量は水増ししない。
+  if (type === "post" && !standalone) {
+    const prev = posts[1]; // unshift直後なので直前の投稿は index 1
+    if (prev && prev.type === "post") {
+      const gapMin = (now.getTime() - new Date(prev.createdAt).getTime()) / 60000;
+      const windowMin = settings.threadWindowMin ?? DEFAULT_SETTINGS.threadWindowMin;
+      if (gapMin >= 0 && gapMin <= windowMin) {
+        post.threadId = prev.threadId || newId();
+        if (!prev.threadId) prev.threadId = post.threadId;
+      }
+    }
+  }
 
   if (refId) {
     const ref = getPost(refId);

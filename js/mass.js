@@ -1,23 +1,22 @@
-// 質量（Mass）と重み付け — 過去設計の「ワタアメ宇宙の物理法則」の簡易移植
+// 電光掲示板の抽選ロジック — 「忘却 × 偶然」エンジン
 //
-// Mass = ポスト自身の存在強度。方向を持たない。
-//   - セルフ引用（接ぎ木）が最大要因（イト太さに相当）
-//   - セルフ再掲（再芽）が次点（イト本数に相当）
-//   - 本文の長さがわずかに寄与（コメント量に相当)
+// 設計転換（v2）: 掲示板は「重要度」で回さない。
+//   重要なテーマ（＝繰り返し出る＝重心）を重く扱うと、掲示板は既によく考えてる
+//   ことばかりを流し始め、思考が重心に吸い寄せられてひらめきが生まれにくくなる
+//   （レコメンドのフィルターバブルと同じ）。掲示板の価値は「過去の自分との予期
+//   しない衝突」なので、抽選は基本フラット（ほぼランダム）にする。
 //
-// Weight = 方向のある力。電光掲示板での浮上しやすさを決める。
-//   Weight = Mass × 節目重力（アニバーサリーボーナス）
+//   - 接ぎ木・再芽の回数は抽選に効かせない（＝掲示板のために接ぎ木する義務をなくす）
+//   - 直近クールダウン: 最近流したものは一定回数ハブる（「同じのばっかり」を殺す本命）
+//   - 節目重力だけ薄く残す: 「ちょうど1年前の今日」は時間の偶然でありフィルター
+//     バブルを作らないので、軽い味付けとして残す
 
-export function massOf(post) {
-  let mass = 1;
-  mass += (post.quoteCount || 0) * 2.0;
-  mass += (post.repostCount || 0) * 1.2;
-  mass += Math.min((post.text || "").length / 140, 2) * 0.3;
-  if (post.aiReply) mass += 0.5;
-  return mass;
+export function ageInDays(post, now = Date.now()) {
+  return (now - new Date(post.createdAt).getTime()) / 86400000;
 }
 
-// 節目重力: 投稿からの経過日数が「時間軸の節目」に近いほど強く引かれる
+// 節目重力: 投稿からの経過日数が「時間軸の節目」に近いほど強く引かれる。
+// 掲示板の抽選では ANNIVERSARY_STRENGTH で薄めて使い、ラベル表示にも使う。
 const MILESTONES = [
   { days: 7, tolerance: 1.5, gravity: 3.0, label: "1週間前" },
   { days: 30, tolerance: 3, gravity: 3.5, label: "1ヶ月前" },
@@ -26,10 +25,6 @@ const MILESTONES = [
   { days: 365 * 5, tolerance: 14, gravity: 6.0, label: "5年前" },
   { days: 365 * 10, tolerance: 21, gravity: 8.0, label: "10年前" },
 ];
-
-export function ageInDays(post, now = Date.now()) {
-  return (now - new Date(post.createdAt).getTime()) / 86400000;
-}
 
 export function milestoneBonus(post, now = Date.now()) {
   const age = ageInDays(post, now);
@@ -46,28 +41,49 @@ export function milestoneBonus(post, now = Date.now()) {
   return { bonus, label };
 }
 
-export function weightOf(post, now = Date.now()) {
-  return massOf(post) * milestoneBonus(post, now).bonus;
-}
+// 節目重力をどれだけ抽選に効かせるか。0で完全フラット、1で従来の強さ。
+// 「ほぼランダム＋節目だけ薄く」なので小さめ（10年前で約2倍、1年前で約1.6倍）。
+const ANNIVERSARY_STRENGTH = 0.15;
 
-// 電光掲示板用: 重み付き非復元サンプリング
-// 3日以上前のポストの中から、Weightに比例した確率でn件選ぶ
+// 直近クールダウン: 最近流したポストidを新しい順に保持し、次の抽選から除外する。
+// これが「同じのばっかり流れる」を実際に止めるレバー（重み付けとは独立に効く）。
+const COOLDOWN_CAP = 40;
+let cooldown = [];
+
+// 電光掲示板用: ほぼ一様ランダム（＋節目だけ薄い重み）で n 件選ぶ。
+// 3日以上前のポストが対象。直近で流したものはクールダウンで避ける。
 export function pickForTicker(posts, n = 12, now = Date.now()) {
-  const pool = posts
-    .filter((p) => ageInDays(p, now) >= 3 && p.text)
-    .map((p) => ({ post: p, w: weightOf(p, now) }));
+  const pool = posts.filter((p) => ageInDays(p, now) >= 3 && p.text);
+  if (pool.length === 0) return [];
+
+  // クールダウン適用: 足りなければ古いものから順に解禁して n 件を確保する
+  let blocked = cooldown.slice();
+  let eligible = pool.filter((p) => !blocked.includes(p.id));
+  while (eligible.length < n && blocked.length > 0) {
+    blocked = blocked.slice(0, -1); // 一番古いクールダウンを1つ解禁
+    eligible = pool.filter((p) => !blocked.includes(p.id));
+  }
+  if (eligible.length === 0) eligible = pool.slice();
+
+  const weighted = eligible.map((p) => ({
+    post: p,
+    w: 1 + (milestoneBonus(p, now).bonus - 1) * ANNIVERSARY_STRENGTH,
+  }));
 
   const picked = [];
-  while (picked.length < n && pool.length > 0) {
-    const total = pool.reduce((s, x) => s + x.w, 0);
+  while (picked.length < n && weighted.length > 0) {
+    const total = weighted.reduce((s, x) => s + x.w, 0);
     let r = Math.random() * total;
     let idx = 0;
-    for (let i = 0; i < pool.length; i++) {
-      r -= pool[i].w;
+    for (let i = 0; i < weighted.length; i++) {
+      r -= weighted[i].w;
       if (r <= 0) { idx = i; break; }
     }
-    picked.push(pool[idx].post);
-    pool.splice(idx, 1);
+    picked.push(weighted[idx].post);
+    weighted.splice(idx, 1);
   }
+
+  // 流したものをクールダウンへ（新しい順に前へ積む）
+  cooldown = [...picked.map((p) => p.id), ...cooldown].slice(0, COOLDOWN_CAP);
   return picked;
 }

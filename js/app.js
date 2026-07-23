@@ -11,7 +11,7 @@ import {
   initSync, getSyncState, saveConfig as saveSyncConfig,
   signIn, signUp, signOut, syncNow, setAutoSync, scheduleAutoPush,
 } from "./sync.js";
-import { massOf, milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
+import { milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
 import { stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
 import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, currentModelLabel } from "./ai.js";
 import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, recurringThemes } from "./report.js";
@@ -90,15 +90,40 @@ $("#composerText").addEventListener("input", () => {
   $("#charCount").textContent = len > 0 ? `${len}字` : "";
 });
 
+$("#composerText").addEventListener("focus", updateThreadHint);
+
+// 連（スレッド）: 直前の投稿から閾値分以内なら「続き」になる。自動が既定だが、
+// 別の話題を書き始めるときは手で切れるようにする（判断コストは基本ゼロ）。
+let breakNextThread = false;
+
+function updateThreadHint() {
+  const hint = $("#threadHint");
+  const latest = getPosts()[0];
+  const windowMin = getSettings().threadWindowMin ?? 5;
+  const within = latest && latest.type === "post" &&
+    (Date.now() - new Date(latest.createdAt).getTime()) / 60000 <= windowMin;
+  if (!within) { hint.hidden = true; breakNextThread = false; return; }
+  hint.hidden = false;
+  $("#threadHintText").textContent = breakNextThread ? "🌿 新しい連で始めます" : "↳ さっきの続きになります";
+  $("#threadBreakBtn").textContent = breakNextThread ? "続きに戻す" : "別の話題として切る";
+}
+
+$("#threadBreakBtn").addEventListener("click", () => {
+  breakNextThread = !breakNextThread;
+  updateThreadHint();
+});
+
 $("#postBtn").addEventListener("click", () => {
   const text = $("#composerText").value.trim();
   if (!text) return;
-  const post = addPost({ text, mood: selectedMood });
+  const post = addPost({ text, mood: selectedMood, standalone: breakNextThread });
   $("#composerText").value = "";
   $("#charCount").textContent = "";
   selectedMood = null;
+  breakNextThread = false;
   renderMoodPicker();
   renderFeed();
+  updateThreadHint();
   updateVineBadge();
   updateTicker();
   maybeAutoReply(post);
@@ -118,9 +143,8 @@ async function maybeAutoReply(post) {
 
 // ---------- フィード ----------
 
-function postHtml(post, { showActions = true } = {}) {
+function postHtml(post, { showActions = true, threadCont = false } = {}) {
   const ref = post.refId ? getPost(post.refId) : null;
-  const mass = massOf(post);
 
   let repostNote = "";
   let quoteBlock = "";
@@ -146,14 +170,17 @@ function postHtml(post, { showActions = true } = {}) {
       <button class="pa-btn danger" data-action="delete" data-id="${post.id}">削除</button>
     </div>` : "";
 
+  const threadClass = post.threadId ? (threadCont ? " thread-cont" : " thread-head") : "";
+  const threadMark = threadCont ? `<span class="thread-mark" title="さっきの続き（同じ一息）">↳</span>` : "";
+
   return `
-  <article class="post" data-id="${post.id}">
+  <article class="post${threadClass}" data-id="${post.id}">
     ${repostNote}
     <div class="post-head">
+      ${threadMark}
       <span>${fmtDateTime(post.createdAt)}</span>
       <span>${fmtAgo(post.createdAt)}</span>
       ${post.mood != null ? `<span class="post-mood">${moodEmoji(post.mood)}</span>` : ""}
-      <span class="post-mass" title="質量（引用・再掲で重くなる）">◉ ${mass.toFixed(1)}</span>
     </div>
     ${bodyHtml}
     ${quoteBlock}
@@ -168,7 +195,13 @@ function renderFeed() {
     $("#feed").innerHTML = `<div class="feed-empty">まだ何もない。ここはあなたと、やがて芽吹く過去のあなただけの場所。<br>最初のひと粒を刻もう。</div>`;
     return;
   }
-  $("#feed").innerHTML = posts.map((p) => postHtml(p)).join("");
+  // 連（スレッド）は時間的に連続した通常投稿の塊。フィードは新しい順なので、
+  // 一つ古い隣（index+1）が同じ threadId なら「続き」として繋げて描画する。
+  $("#feed").innerHTML = posts.map((p, i) => {
+    const older = posts[i + 1];
+    const threadCont = Boolean(p.threadId && older && older.threadId === p.threadId);
+    return postHtml(p, { threadCont });
+  }).join("");
 }
 
 // フィード内アクション（イベント委譲）
@@ -815,6 +848,7 @@ function renderAll() {
   renderSyncUI();
   updateVineBadge();
   updateTicker();
+  updateThreadHint();
   updatePendingBanner();
 }
 
