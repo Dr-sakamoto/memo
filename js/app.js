@@ -202,22 +202,38 @@ function renderFeed() {
     $("#feed").innerHTML = `<div class="feed-empty">まだ何もない。ここはあなたと、やがて芽吹く過去のあなただけの場所。<br>最初のひと粒を刻もう。</div>`;
     return;
   }
-  // 連（スレッド）は時間的に連続した通常投稿の塊。フィードは新しい順なので、
-  // 一つ古い隣（index+1）が同じ threadId なら「続き」として繋げて描画する。
+  // タイムライン全体は新しい順。ただし「連（スレッド）＝連続投稿の一息の塊」は、
+  // その内部だけ時系列順（古い→新しい＝上→下）に並べ替えて描く。連は書いた順に
+  // 上から読めるようにし、連と連の間は従来どおり新しい順を保つ（＝下に行くほど過去）。
   // 繋がっている2投稿の間には、繋がりが見てわかる連結バー（切り離しボタン付き）を挟む。
   const parts = [];
-  posts.forEach((p, i) => {
-    const older = posts[i + 1];
-    const threadCont = Boolean(p.threadId && older && older.threadId === p.threadId);
-    parts.push(postHtml(p, { threadCont }));
-    if (threadCont) {
-      parts.push(`
+  let i = 0;
+  while (i < posts.length) {
+    // 同じ threadId が続く範囲 [i, j] を求める（posts は新しい順）。
+    let j = i;
+    if (posts[i].threadId) {
+      while (j + 1 < posts.length && posts[j + 1].threadId === posts[i].threadId) j++;
+    }
+    if (j > i) {
+      // 連: 古い順に反転して、頭（起点）を上・続きを下にして描く。
+      const chrono = posts.slice(i, j + 1).reverse();
+      chrono.forEach((post, k) => {
+        parts.push(postHtml(post, { threadCont: k > 0 }));
+        if (k < chrono.length - 1) {
+          // 直下の（一つ新しい）投稿との連結。切り離しは継続側（新しい方）で行う。
+          const newer = chrono[k + 1];
+          parts.push(`
       <div class="thread-link">
         <span class="thread-link-line" aria-hidden="true"></span>
-        <button class="thread-cut-btn" data-action="cut-thread" data-id="${p.id}" title="ここで連を切り離す">✂️ 切り離す</button>
+        <button class="thread-cut-btn" data-action="cut-thread" data-id="${newer.id}" title="ここで連を切り離す">✂️ 切り離す</button>
       </div>`);
+        }
+      });
+    } else {
+      parts.push(postHtml(posts[i], { threadCont: false }));
     }
-  });
+    i = j + 1;
+  }
   $("#feed").innerHTML = parts.join("");
 }
 
