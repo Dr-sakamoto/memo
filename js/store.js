@@ -3,6 +3,7 @@
 const POSTS_KEY = "cns.posts.v1";
 const SETTINGS_KEY = "cns.settings.v1";
 const REPORTS_KEY = "cns.reports.v1";
+const DELETED_KEY = "cns.deleted.v1"; // 削除の記録（クラウド同期で「削除」を伝播させるための墓標）
 
 export const MOODS = [
   { value: 2,  emoji: "😄" },
@@ -53,6 +54,11 @@ function notifyMutation() {
 
 let posts = load(POSTS_KEY, []);
 let reports = load(REPORTS_KEY, []);
+
+// { postIds: { [id]: deletedAtIso }, reportIds: { [id]: deletedAtIso } }
+let deletedIds = load(DELETED_KEY, { postIds: {}, reportIds: {} });
+if (!deletedIds.postIds) deletedIds.postIds = {};
+if (!deletedIds.reportIds) deletedIds.reportIds = {};
 
 let settings = load(SETTINGS_KEY, null);
 if (!settings) {
@@ -137,6 +143,8 @@ export function deletePost(id) {
   }
   posts = posts.filter((p) => p.id !== id);
   save(POSTS_KEY, posts);
+  deletedIds.postIds[id] = new Date().toISOString();
+  save(DELETED_KEY, deletedIds);
   notifyMutation();
 }
 
@@ -168,6 +176,8 @@ export function addReport(report) {
 export function deleteReport(id) {
   reports = reports.filter((r) => r.id !== id);
   save(REPORTS_KEY, reports);
+  deletedIds.reportIds[id] = new Date().toISOString();
+  save(DELETED_KEY, deletedIds);
   notifyMutation();
 }
 
@@ -209,14 +219,17 @@ export function importJson(json) {
   if (!Array.isArray(data.posts)) throw new Error("不正なファイル形式です");
   posts = data.posts;
   reports = Array.isArray(data.reports) ? data.reports : [];
+  // 明示的な全置き換えなので、これまでの削除記録は持ち越さない
+  deletedIds = { postIds: {}, reportIds: {} };
   save(POSTS_KEY, posts);
   save(REPORTS_KEY, reports);
+  save(DELETED_KEY, deletedIds);
   notifyMutation();
 }
 
 // クラウド同期がマージ結果を反映するための差し替え。
 // リモート由来の適用なので notifyMutation は呼ばない（プッシュのループを避ける）。
-export function replaceData({ posts: nextPosts, reports: nextReports }) {
+export function replaceData({ posts: nextPosts, reports: nextReports, deletedPostIds, deletedReportIds }) {
   if (Array.isArray(nextPosts)) {
     posts = nextPosts;
     save(POSTS_KEY, posts);
@@ -225,16 +238,32 @@ export function replaceData({ posts: nextPosts, reports: nextReports }) {
     reports = nextReports;
     save(REPORTS_KEY, reports);
   }
+  if (deletedPostIds || deletedReportIds) {
+    deletedIds = {
+      postIds: deletedPostIds || deletedIds.postIds,
+      reportIds: deletedReportIds || deletedIds.reportIds,
+    };
+    save(DELETED_KEY, deletedIds);
+  }
 }
 
-// 同期対象の生データ（AIキーなどの設定は含めない）
+// 同期対象の生データ（AIキーなどの設定は含めない）。
+// deletedPostIds/deletedReportIds は「削除済みid」の墓標で、
+// 同期先に残っていても復活させないために使う。
 export function snapshot() {
-  return { posts, reports };
+  return {
+    posts,
+    reports,
+    deletedPostIds: { ...deletedIds.postIds },
+    deletedReportIds: { ...deletedIds.reportIds },
+  };
 }
 
 export function wipeAll() {
   posts = [];
   reports = [];
+  deletedIds = { postIds: {}, reportIds: {} };
   localStorage.removeItem(POSTS_KEY);
   localStorage.removeItem(REPORTS_KEY);
+  localStorage.removeItem(DELETED_KEY);
 }

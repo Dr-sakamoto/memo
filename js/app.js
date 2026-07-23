@@ -740,7 +740,7 @@ function renderSyncUI() {
         : `${st.email}｜ログイン済み`;
     }
     $("#syncStatusText").textContent = text;
-    $("#syncNote").textContent = "※ 同期は「追記の統合」方式です。片方の端末での削除は、もう一方に残っていると復活することがあります。";
+    $("#syncNote").textContent = "※ 削除も同期されます。反映にはもう一方の端末を開く（または少し待つ）必要があります。";
   }
 }
 

@@ -7,7 +7,8 @@
 //   - RLS により、各ユーザーは自分の1行しか読み書きできない
 //
 // マージ方針: 端末Aと端末Bのデータを id で突き合わせて和集合を取る（データを失わない）。
-//   ※ この方式では「削除」はクラウドへ伝播しない（他端末に残っていれば復活しうる）。
+//   削除は「墓標（削除済みid一覧）」として同期し、和集合を取ったあとに
+//   墓標に載っているidを除外することで、他端末に残っていても復活しないようにする。
 
 import { snapshot, replaceData } from "./store.js";
 
@@ -203,7 +204,13 @@ async function pullRemote(token, userId) {
   });
   if (!res.ok) throw await parseError(res);
   const rows = await res.json();
-  return rows[0]?.data || { posts: [], reports: [] };
+  const data = rows[0]?.data || {};
+  return {
+    posts: data.posts || [],
+    reports: data.reports || [],
+    deletedPostIds: data.deletedPostIds || {},
+    deletedReportIds: data.deletedReportIds || {},
+  };
 }
 
 async function pushRemote(token, userId, data) {
@@ -244,10 +251,24 @@ function byCreatedAtDesc(a, b) {
   return new Date(b.createdAt) - new Date(a.createdAt);
 }
 
+// 削除済みid（墓標）の和集合を取る。一度削除されたidはどちらの端末で
+// 見ても削除済み扱いになる。
+function mergeDeletedIds(localMap, remoteMap) {
+  return { ...(remoteMap || {}), ...(localMap || {}) };
+}
+
 function mergeState(local, remote) {
-  const posts = mergeById(local.posts, remote.posts, pickRicherPost).sort(byCreatedAtDesc);
-  const reports = mergeById(local.reports, remote.reports, (_r, l) => l).sort(byCreatedAtDesc);
-  return { posts, reports };
+  const deletedPostIds = mergeDeletedIds(local.deletedPostIds, remote.deletedPostIds);
+  const deletedReportIds = mergeDeletedIds(local.deletedReportIds, remote.deletedReportIds);
+
+  const posts = mergeById(local.posts, remote.posts, pickRicherPost)
+    .filter((p) => !deletedPostIds[p.id])
+    .sort(byCreatedAtDesc);
+  const reports = mergeById(local.reports, remote.reports, (_r, l) => l)
+    .filter((r) => !deletedReportIds[r.id])
+    .sort(byCreatedAtDesc);
+
+  return { posts, reports, deletedPostIds, deletedReportIds };
 }
 
 // ---- 同期の実行 ----
@@ -267,20 +288,25 @@ export async function syncNow() {
     const local = snapshot();
     const merged = mergeState(local, remote);
 
-    // ローカルに変化があるか（リモートから増えた分）を判定して再描画
-    const localChanged =
+    // ローカルに変化があるか（リモートから増えた分・他端末での削除分）を判定
+    const localContentChanged =
       JSON.stringify(merged.posts) !== JSON.stringify(local.posts) ||
       JSON.stringify(merged.reports) !== JSON.stringify(local.reports);
+    const localDeletedChanged =
+      JSON.stringify(merged.deletedPostIds) !== JSON.stringify(local.deletedPostIds) ||
+      JSON.stringify(merged.deletedReportIds) !== JSON.stringify(local.deletedReportIds);
 
-    if (localChanged) {
+    if (localContentChanged || localDeletedChanged) {
       replaceData(merged);
-      onApplied();
+      if (localContentChanged) onApplied();
     }
 
-    // リモートにも変化があれば（ローカルから増えた分）プッシュ
+    // リモートにも変化があれば（ローカルからの追加・削除分）プッシュ
     const remoteChanged =
       JSON.stringify(merged.posts) !== JSON.stringify(remote.posts) ||
-      JSON.stringify(merged.reports) !== JSON.stringify(remote.reports);
+      JSON.stringify(merged.reports) !== JSON.stringify(remote.reports) ||
+      JSON.stringify(merged.deletedPostIds) !== JSON.stringify(remote.deletedPostIds) ||
+      JSON.stringify(merged.deletedReportIds) !== JSON.stringify(remote.deletedReportIds);
 
     if (remoteChanged) {
       await pushRemote(token, userId, merged);
