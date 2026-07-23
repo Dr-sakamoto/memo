@@ -53,8 +53,12 @@
     <div class="composer card">
       <textarea id="composerText" rows="3" placeholder="いま、なにを考えている？（雑記でいい。分類は他者＝AIの仕事）"></textarea>
       <div class="thread-hint" id="threadHint" hidden>
+        <span class="thread-hint-icon" id="threadHintIcon"></span>
         <span id="threadHintText"></span>
-        <button type="button" class="linklike" id="threadBreakBtn"></button>
+        <div class="thread-toggle" id="threadToggle" role="group" aria-label="連の設定">
+          <button type="button" class="thread-toggle-btn" data-mode="cont">↳ 続きにする</button>
+          <button type="button" class="thread-toggle-btn" data-mode="break">🌿 新しい連にする</button>
+        </div>
       </div>
       <div class="composer-footer">
         <div class="mood-picker" id="moodPicker" title="いまの気分（任意）"></div>

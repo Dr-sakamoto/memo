@@ -2,6 +2,7 @@ import {
   MOODS,
   getPosts, getPost, getSettings, saveSettings,
   addPost, deletePost, setAiReply,
+  breakThreadLink,
   getReports, deleteReport,
   activeDays, daysSinceFirstPost,
   exportJson, importJson, wipeAll,
@@ -17,6 +18,7 @@ import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, curr
 import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, recurringThemes } from "./report.js";
 
 const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
 
 // ---------- ユーティリティ ----------
 
@@ -104,12 +106,17 @@ function updateThreadHint() {
     (Date.now() - new Date(latest.createdAt).getTime()) / 60000 <= windowMin;
   if (!within) { hint.hidden = true; breakNextThread = false; return; }
   hint.hidden = false;
-  $("#threadHintText").textContent = breakNextThread ? "🌿 新しい連で始めます" : "↳ さっきの続きになります";
-  $("#threadBreakBtn").textContent = breakNextThread ? "続きに戻す" : "別の話題として切る";
+  $("#threadHintIcon").textContent = breakNextThread ? "🌿" : "↳";
+  $("#threadHintText").textContent = breakNextThread ? "新しい連として始めます" : "さっきの続きになります";
+  $$("#threadToggle .thread-toggle-btn").forEach((b) => {
+    b.classList.toggle("active", (b.dataset.mode === "break") === breakNextThread);
+  });
 }
 
-$("#threadBreakBtn").addEventListener("click", () => {
-  breakNextThread = !breakNextThread;
+$("#threadToggle").addEventListener("click", (e) => {
+  const btn = e.target.closest(".thread-toggle-btn");
+  if (!btn) return;
+  breakNextThread = btn.dataset.mode === "break";
   updateThreadHint();
 });
 
@@ -197,12 +204,30 @@ function renderFeed() {
   }
   // 連（スレッド）は時間的に連続した通常投稿の塊。フィードは新しい順なので、
   // 一つ古い隣（index+1）が同じ threadId なら「続き」として繋げて描画する。
-  $("#feed").innerHTML = posts.map((p, i) => {
+  // 繋がっている2投稿の間には、繋がりが見てわかる連結バー（切り離しボタン付き）を挟む。
+  const parts = [];
+  posts.forEach((p, i) => {
     const older = posts[i + 1];
     const threadCont = Boolean(p.threadId && older && older.threadId === p.threadId);
-    return postHtml(p, { threadCont });
-  }).join("");
+    parts.push(postHtml(p, { threadCont }));
+    if (threadCont) {
+      parts.push(`
+      <div class="thread-link">
+        <span class="thread-link-line" aria-hidden="true"></span>
+        <button class="thread-cut-btn" data-action="cut-thread" data-id="${p.id}" title="ここで連を切り離す">✂️ 切り離す</button>
+      </div>`);
+    }
+  });
+  $("#feed").innerHTML = parts.join("");
 }
+
+// 連（スレッド）を手動で切り離す
+document.body.addEventListener("click", (e) => {
+  const btn = e.target.closest(".thread-cut-btn");
+  if (!btn) return;
+  breakThreadLink(btn.dataset.id);
+  renderFeed();
+});
 
 // フィード内アクション（イベント委譲）
 document.body.addEventListener("click", async (e) => {

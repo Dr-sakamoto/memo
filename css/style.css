@@ -225,14 +225,74 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
   background: var(--accent-soft);
   color: var(--grape);
 }
-/* 連（スレッド）: 連続した「同じ一息」の投稿を左レールで束ねて見せる */
-.thread-head, .thread-cont { border-left: 2px solid var(--accent-soft); }
-.thread-cont { margin-bottom: 3px; }
+/* 連（スレッド）: 連続した「同じ一息」の投稿を左の色付きレールで束ねて見せる */
+.thread-head, .thread-cont { border-left: 3px solid var(--accent-soft); }
+.thread-cont { margin-bottom: 0; }
 .thread-mark { color: var(--accent); font-weight: 700; margin-right: 2px; }
 
-/* コンポーザーの連ヒント（続きになる／別の話題として切る） */
-.thread-hint { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: .78rem; color: var(--muted); }
-.linklike { background: none; border: none; padding: 0; color: var(--accent); font-size: .78rem; cursor: pointer; text-decoration: underline; }
+/* 連の継ぎ目: 2つのカードの間に繋がりを見せる連結バー。押すとそこで切り離せる */
+.thread-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  margin: 0 0 10px 0;
+  padding-left: 17px;
+  position: relative;
+}
+.thread-link-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent-soft);
+}
+.thread-cut-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: .72rem;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 999px;
+  line-height: 1.6;
+}
+.thread-cut-btn:hover, .thread-cut-btn:focus-visible {
+  color: var(--danger);
+  background: var(--card-2);
+  border-color: var(--line);
+}
+
+/* コンポーザーの連ヒント（続きになる／新しい連にする） */
+.thread-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--bg-soft);
+  border-radius: 8px;
+  font-size: .78rem;
+  color: var(--muted);
+}
+.thread-hint-icon { font-size: .9rem; }
+.thread-toggle { display: flex; gap: 6px; margin-left: auto; }
+.thread-toggle-btn {
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .74rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.thread-toggle-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 .post-body { margin: 8px 0 6px; white-space: pre-wrap; word-break: break-word; }
 .post-body .tag { color: var(--accent); }
 .post blockquote, .modal blockquote {
