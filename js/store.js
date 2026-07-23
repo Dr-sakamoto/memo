@@ -148,6 +148,32 @@ export function addPost({ text, mood, type = "post", refId = null, standalone = 
   return post;
 }
 
+// 連（スレッド）の途中で「ここから話題が変わる」と手動で断ち切る。
+// postId は継続側（新しい方）の投稿。そこから新しい側と古い側の2つの塊に分割する。
+export function breakThreadLink(postId) {
+  const idx = posts.findIndex((p) => p.id === postId);
+  if (idx === -1) return false;
+  const tid = posts[idx].threadId;
+  if (!tid || !posts[idx + 1] || posts[idx + 1].threadId !== tid) return false;
+
+  // 同じ threadId の連続範囲を求める（新しい側の始点 s 〜 古い側の終点 e）
+  let s = idx;
+  while (s - 1 >= 0 && posts[s - 1].threadId === tid) s--;
+  let e = idx;
+  while (e + 1 < posts.length && posts[e + 1].threadId === tid) e++;
+
+  const newerSeg = posts.slice(s, idx + 1);
+  const olderSeg = posts.slice(idx + 1, e + 1);
+
+  const newTid = newerSeg.length > 1 ? newId() : null;
+  newerSeg.forEach((p) => { p.threadId = newTid; });
+  if (olderSeg.length === 1) olderSeg[0].threadId = null;
+
+  save(POSTS_KEY, posts);
+  notifyMutation();
+  return true;
+}
+
 export function deletePost(id) {
   const post = getPost(id);
   if (!post) return;
