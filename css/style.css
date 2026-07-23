@@ -282,7 +282,8 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .vine-card { text-align: center; }
 #vineSvgWrap svg { max-width: 100%; height: auto; }
 .vine-info { text-align: left; margin-top: 10px; }
-.vine-stage-name { font-size: 1.1rem; color: var(--grape); }
+.vine-stage-name { font-size: 1.4rem; font-weight: 700; color: var(--grape); }
+.vine-stage-desc { font-size: 1.25rem; color: var(--text); line-height: 1.6; margin-top: 4px; }
 .vine-progress-bar {
   height: 8px;
   background: var(--bg-soft);

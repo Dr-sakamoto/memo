@@ -354,8 +354,11 @@ function renderVine() {
     progressHtml = `<div class="muted">木は成熟しました。それでも、刻むたびに房は増えていく。</div>`;
   }
 
+  const descHtml = stage.desc.replace(/。(?!$)/g, "。<br>");
+
   $("#vineInfo").innerHTML = `
-    <div class="vine-stage-name">${stage.emoji} ${stage.name} — ${stage.desc}</div>
+    <div class="vine-stage-name">${stage.emoji} ${stage.name}</div>
+    <div class="vine-stage-desc">${descHtml}</div>
     ${progressHtml}
     <div class="vine-stats">
       <span>活動日数 <b>${days}日</b></span>
