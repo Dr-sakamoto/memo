@@ -9,7 +9,6 @@
   --accent: #7c3aed;
   --accent-soft: #ede7fc;
   --grape: #6d28d9;
-  --thread-tint: #faf7ff;   /* 連（スレッド）のまとまりの淡い地色 */
   --leaf: #3f9350;
   --danger: #dc2626;
   --mood-p2: #c98a1f;
@@ -231,9 +230,8 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
    投稿どうしの継ぎ目は薄い区切り線だけにして「1つのまとまり」に見せ、
    その線の端に小さなハサミを置いて、そこから連を断ち切れるようにする。 */
 .thread {
-  background: var(--thread-tint);
+  background: var(--card);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent-soft);
   border-radius: 12px;
   margin-bottom: 10px;
   overflow: hidden;
@@ -245,8 +243,8 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
   background: transparent;
   margin: 0;
 }
-/* 続き（連の先頭＝最古以外）を示す控えめな矢印 */
-.thread-mark { color: var(--accent); font-weight: 700; margin-right: 2px; opacity: .75; }
+/* 続き（連の先頭＝最古以外）を示す控えめな矢印。色は変えず muted のまま */
+.thread-mark { color: var(--muted); font-weight: 700; margin-right: 2px; }
 
 /* 投稿どうしの継ぎ目：薄い区切り線。高さを持たず密着を保つ。線の端に小さなハサミ */
 .thread-seam {
