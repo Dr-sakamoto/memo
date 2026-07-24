@@ -135,7 +135,7 @@ body {
 
 .card {
   background: var(--card);
-  border: 1.5px solid var(--line);
+  border: 1.75px solid var(--line);
   border-radius: 12px;
   padding: 14px 16px;
   margin-bottom: 14px;
@@ -212,7 +212,7 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 /* ---------- feed / posts ---------- */
 .post {
   background: var(--card);
-  border: 1.5px solid var(--line);
+  border: 1.75px solid var(--line);
   border-radius: 12px;
   padding: 12px 14px;
   margin-bottom: 10px;
@@ -231,7 +231,7 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
    その線の端に小さなハサミを置いて、そこから連を断ち切れるようにする。 */
 .thread {
   background: var(--card);
-  border: 1.5px solid var(--line);
+  border: 1.75px solid var(--line);
   border-radius: 12px;
   margin-bottom: 10px;
   overflow: hidden;
