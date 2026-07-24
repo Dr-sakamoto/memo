@@ -205,30 +205,32 @@ function renderFeed() {
     $("#feed").innerHTML = `<div class="feed-empty">まだ何もない。ここはあなたと、やがて芽吹く過去のあなただけの場所。<br>最初のひと粒を刻もう。</div>`;
     return;
   }
-  // 連（スレッド）は時間的に連続した通常投稿の塊。フィードは新しい順なので、
-  // 同じ threadId が並ぶ範囲をひとまとめにし、間を空けず1つの .thread ブロックに包む。
-  // 投稿どうしの継ぎ目は薄い区切り線だけにして「1つのまとまり」に見せ、
-  // その線の端に小さなハサミを置いて、そこから連を断ち切れるようにする。
+  // タイムライン全体は新しい順。ただし「連（スレッド）＝連続投稿の一息の塊」は、
+  // その内部だけ時系列順（古い→新しい＝上→下）に並べ替え、1つの .thread ブロックに
+  // まとめて描く。連は書いた順に上から読めるようにし、連と連の間は従来どおり新しい順
+  // を保つ（＝下に行くほど過去）。投稿どうしの継ぎ目は薄い区切り線だけにして「1つの
+  // まとまり」に見せ、その線の端に小さなハサミを置いて、そこから連を断ち切れるようにする。
   const parts = [];
   let i = 0;
   while (i < posts.length) {
     const p = posts[i];
     if (!p.threadId) { parts.push(postHtml(p)); i++; continue; }
 
-    // 同じ連の連続範囲（新しい順に group[0]=最新 … 末尾=最古）
+    // 同じ threadId が続く範囲 [i, j]（posts は新しい順）を求める。
     let j = i;
     while (j + 1 < posts.length && posts[j + 1].threadId === p.threadId) j++;
-    const group = posts.slice(i, j + 1);
 
+    // 連の内部は古い順に反転して、頭（起点）を上・続きを下にして並べる。
+    const chrono = posts.slice(i, j + 1).reverse();
     const inner = [];
-    group.forEach((gp, k) => {
-      const isOldest = k === group.length - 1;
-      inner.push(postHtml(gp, { grouped: true, isCont: !isOldest }));
-      if (!isOldest) {
-        // gp（新しい側）と次（古い側）の継ぎ目。切り離しは新しい側のidで行う。
+    chrono.forEach((post, k) => {
+      inner.push(postHtml(post, { grouped: true, isCont: k > 0 }));
+      if (k < chrono.length - 1) {
+        // 直下の（一つ新しい）投稿との継ぎ目。切り離しは継続側（新しい方）で行う。
+        const newer = chrono[k + 1];
         inner.push(`
         <div class="thread-seam">
-          <button class="thread-cut-btn" data-action="cut-thread" data-id="${gp.id}" title="ここで連を切り離す" aria-label="ここで連を切り離す">✂️</button>
+          <button class="thread-cut-btn" data-action="cut-thread" data-id="${newer.id}" title="ここで連を切り離す" aria-label="ここで連を切り離す">✂️</button>
         </div>`);
       }
     });
