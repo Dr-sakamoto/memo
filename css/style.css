@@ -25,7 +25,7 @@ body {
   margin: 0;
   min-height: 100vh;
   min-height: 100dvh;
-  background: var(--bg);
+  background: var(--bg-soft);   /* 薄く色を敷き、白いカードを浮かせて視認性を上げる */
   color: var(--text);
   font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
   line-height: 1.65;
@@ -135,7 +135,7 @@ body {
 
 .card {
   background: var(--card);
-  border: 1px solid var(--line);
+  border: 1.75px solid var(--line);
   border-radius: 12px;
   padding: 14px 16px;
   margin-bottom: 14px;
@@ -212,7 +212,7 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 /* ---------- feed / posts ---------- */
 .post {
   background: var(--card);
-  border: 1px solid var(--line);
+  border: 1.75px solid var(--line);
   border-radius: 12px;
   padding: 12px 14px;
   margin-bottom: 10px;
@@ -225,43 +225,67 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
   background: var(--accent-soft);
   color: var(--grape);
 }
-/* 連（スレッド）: 連続した「同じ一息」の投稿を左の色付きレールで束ねて見せる */
-.thread-head, .thread-cont { border-left: 3px solid var(--accent-soft); }
-.thread-cont { margin-bottom: 0; }
-.thread-mark { color: var(--accent); font-weight: 700; margin-right: 2px; }
-
-/* 連の継ぎ目: 2つのカードの間に繋がりを見せる連結バー。押すとそこで切り離せる */
-.thread-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 24px;
-  margin: 0 0 10px 0;
-  padding-left: 17px;
-  position: relative;
+/* ===== 連（スレッド）＝「同じ一息」のまとまり =====
+   連に属する投稿は、間を空けずにピタッと束ね、1つのカード（.thread）に包む。
+   投稿どうしの継ぎ目は薄い区切り線だけにして「1つのまとまり」に見せ、
+   その線の端に小さなハサミを置いて、そこから連を断ち切れるようにする。 */
+.thread {
+  background: var(--card);
+  border: 1.75px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  overflow: hidden;
 }
-.thread-link-line {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--accent-soft);
+/* 連の中の各投稿は、枠・角丸・余白を外して親カードに密着させる */
+.thread .post.thread-item {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  margin: 0;
+}
+/* 続き（連の先頭＝最古以外）を示す控えめな矢印。色は変えず muted のまま */
+.thread-mark { color: var(--muted); font-weight: 700; margin-right: 2px; }
+
+/* 投稿どうしの継ぎ目：薄い区切り線。高さを持たず密着を保つ。線の端に小さなハサミ */
+.thread-seam {
+  position: relative;
+  height: 1px;
+  margin: 0 14px;
+  background: var(--line);
 }
 .thread-cut-btn {
-  background: none;
-  border: 1px solid transparent;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 50%;
   color: var(--muted);
   font-size: .72rem;
+  line-height: 1;
   cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 999px;
-  line-height: 1.6;
+  opacity: .5;
+  box-shadow: 0 1px 3px rgba(42, 36, 56, .1);
+  transition: opacity .12s, color .12s, background .12s, border-color .12s;
 }
 .thread-cut-btn:hover, .thread-cut-btn:focus-visible {
-  color: var(--danger);
-  background: var(--card-2);
-  border-color: var(--line);
+  opacity: 1;
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+/* ハサミにホバー中は、切られる継ぎ目の線を赤い破線で予告する */
+.thread-seam:has(.thread-cut-btn:hover),
+.thread-seam:has(.thread-cut-btn:focus-visible) {
+  background: repeating-linear-gradient(90deg, var(--danger) 0 5px, transparent 5px 10px);
 }
 
 /* コンポーザーの連ヒント（続きになる／新しい連にする） */

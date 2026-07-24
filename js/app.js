@@ -150,7 +150,7 @@ async function maybeAutoReply(post) {
 
 // ---------- フィード ----------
 
-function postHtml(post, { showActions = true, threadCont = false } = {}) {
+function postHtml(post, { showActions = true, grouped = false, isCont = false } = {}) {
   const ref = post.refId ? getPost(post.refId) : null;
 
   let repostNote = "";
@@ -177,8 +177,11 @@ function postHtml(post, { showActions = true, threadCont = false } = {}) {
       <button class="pa-btn danger" data-action="delete" data-id="${post.id}">削除</button>
     </div>` : "";
 
-  const threadClass = post.threadId ? (threadCont ? " thread-cont" : " thread-head") : "";
-  const threadMark = threadCont ? `<span class="thread-mark" title="さっきの続き（同じ一息）">↳</span>` : "";
+  // 連（スレッド）の一員として描くときは grouped=true。枠・角丸・余白を外し、
+  // 親の .thread ブロックに密着させて「1つのまとまり」に見せる。
+  // isCont（連の先頭＝最古以外）には控えめな「↳」で続きを示す。
+  const threadClass = grouped ? " thread-item" : "";
+  const threadMark = isCont ? `<span class="thread-mark" title="さっきの続き（同じ一息）">↳</span>` : "";
 
   return `
   <article class="post${threadClass}" data-id="${post.id}">
@@ -203,35 +206,35 @@ function renderFeed() {
     return;
   }
   // タイムライン全体は新しい順。ただし「連（スレッド）＝連続投稿の一息の塊」は、
-  // その内部だけ時系列順（古い→新しい＝上→下）に並べ替えて描く。連は書いた順に
-  // 上から読めるようにし、連と連の間は従来どおり新しい順を保つ（＝下に行くほど過去）。
-  // 繋がっている2投稿の間には、繋がりが見てわかる連結バー（切り離しボタン付き）を挟む。
+  // その内部だけ時系列順（古い→新しい＝上→下）に並べ替え、1つの .thread ブロックに
+  // まとめて描く。連は書いた順に上から読めるようにし、連と連の間は従来どおり新しい順
+  // を保つ（＝下に行くほど過去）。投稿どうしの継ぎ目は薄い区切り線だけにして「1つの
+  // まとまり」に見せ、その線の端に小さなハサミを置いて、そこから連を断ち切れるようにする。
   const parts = [];
   let i = 0;
   while (i < posts.length) {
-    // 同じ threadId が続く範囲 [i, j] を求める（posts は新しい順）。
+    const p = posts[i];
+    if (!p.threadId) { parts.push(postHtml(p)); i++; continue; }
+
+    // 同じ threadId が続く範囲 [i, j]（posts は新しい順）を求める。
     let j = i;
-    if (posts[i].threadId) {
-      while (j + 1 < posts.length && posts[j + 1].threadId === posts[i].threadId) j++;
-    }
-    if (j > i) {
-      // 連: 古い順に反転して、頭（起点）を上・続きを下にして描く。
-      const chrono = posts.slice(i, j + 1).reverse();
-      chrono.forEach((post, k) => {
-        parts.push(postHtml(post, { threadCont: k > 0 }));
-        if (k < chrono.length - 1) {
-          // 直下の（一つ新しい）投稿との連結。切り離しは継続側（新しい方）で行う。
-          const newer = chrono[k + 1];
-          parts.push(`
-      <div class="thread-link">
-        <span class="thread-link-line" aria-hidden="true"></span>
-        <button class="thread-cut-btn" data-action="cut-thread" data-id="${newer.id}" title="ここで連を切り離す">✂️ 切り離す</button>
-      </div>`);
-        }
-      });
-    } else {
-      parts.push(postHtml(posts[i], { threadCont: false }));
-    }
+    while (j + 1 < posts.length && posts[j + 1].threadId === p.threadId) j++;
+
+    // 連の内部は古い順に反転して、頭（起点）を上・続きを下にして並べる。
+    const chrono = posts.slice(i, j + 1).reverse();
+    const inner = [];
+    chrono.forEach((post, k) => {
+      inner.push(postHtml(post, { grouped: true, isCont: k > 0 }));
+      if (k < chrono.length - 1) {
+        // 直下の（一つ新しい）投稿との継ぎ目。切り離しは継続側（新しい方）で行う。
+        const newer = chrono[k + 1];
+        inner.push(`
+        <div class="thread-seam">
+          <button class="thread-cut-btn" data-action="cut-thread" data-id="${newer.id}" title="ここで連を切り離す" aria-label="ここで連を切り離す">✂️</button>
+        </div>`);
+      }
+    });
+    parts.push(`<div class="thread">${inner.join("")}</div>`);
     i = j + 1;
   }
   $("#feed").innerHTML = parts.join("");
