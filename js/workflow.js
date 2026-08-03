@@ -113,13 +113,20 @@ function buildExtractPrompt(period, chunk, idx, total) {
 ${renderChunk(chunk)}`;
 }
 
-function buildSynthesisPrompt(period, units, topics, schema) {
+// 呼び出し側（report.js）が組み立てた「持ち越し文脈」をプロンプト冒頭に差し込む。
+// ここでは中身を解釈しない（この層はドメイン非依存）。
+function carryOverBlock(carryOver) {
+  const text = (carryOver || "").trim();
+  return text ? `${text}\n\n---\n\n` : "";
+}
+
+function buildSynthesisPrompt(period, units, topics, schema, carryOver) {
   const schemaHint = JSON.stringify(schema.properties, null, 1);
   const unitLines = units
     .map((u) => `- (${u.ids.join(",") || "-"}) [${u.topic}|${u.emotion || "-"}|${u.valence >= 0 ? "+" : ""}${u.valence}] ${u.observation}`)
     .join("\n");
   const topicTable = topics.map(([t, c]) => `${t}×${c}`).join(" / ");
-  return `以下は「${period.label}」の雑記から抽出した観測ユニット（${units.length}件）です。これらだけを根拠に、全体を客観的な他者として統合し、次のスキーマに厳密に従うJSONだけを返してください。JSON以外は出力しないでください。
+  return `${carryOverBlock(carryOver)}以下は「${period.label}」の雑記から抽出した観測ユニット（${units.length}件）です。これらだけを根拠に、全体を客観的な他者として統合し、次のスキーマに厳密に従うJSONだけを返してください。JSON以外は出力しないでください。
 
 トピック頻度（ローカル集計）: ${topicTable || "（なし）"}
 
@@ -131,9 +138,9 @@ ${unitLines}`;
 }
 
 // 一括処理（ポストが少ない期間用。抽出と統合を1回のAPI呼び出しで済ませる）
-function buildSinglePassPrompt(period, chunk, schema) {
+function buildSinglePassPrompt(period, chunk, schema, carryOver) {
   const schemaHint = JSON.stringify(schema.properties, null, 1);
-  return `以下は私の「${period.label}」の雑記（${chunk.length}件）です。行頭の[id:...]は各ポストのIDです。
+  return `${carryOverBlock(carryOver)}以下は私の「${period.label}」の雑記（${chunk.length}件）です。行頭の[id:...]は各ポストのIDです。
 
 全体を客観的な他者として読み、次のJSONスキーマに厳密に従った分析を返してください。JSON以外の文字は出力しないでください。
 
@@ -204,7 +211,7 @@ function decideMode(clean, chunks) {
 
 // 期間のポスト群を受け取り、{ data, pipeline } を返す。
 // data は schema に沿った構造化結果、pipeline は生成の来歴（メタデータ）。
-export async function runReportWorkflow(period, posts, { schema, onProgress = () => {} } = {}) {
+export async function runReportWorkflow(period, posts, { schema, carryOver = "", onProgress = () => {} } = {}) {
   if (!schema || !schema.properties) throw new Error("スキーマが指定されていません");
   const clean = normalizePosts(posts);
   if (clean.length === 0) throw new Error("この期間の有効な雑記がありません");
@@ -217,7 +224,7 @@ export async function runReportWorkflow(period, posts, { schema, onProgress = ()
     onProgress({ stage: "synthesize", done: 0, total: 1 });
     const raw = await callAIPaced({
       system: SYSTEM_PROMPT,
-      user: buildSinglePassPrompt(period, clean, schema),
+      user: buildSinglePassPrompt(period, clean, schema, carryOver),
       maxTokens: 4000,
       jsonSchema: schema,
     });
@@ -254,7 +261,7 @@ export async function runReportWorkflow(period, posts, { schema, onProgress = ()
   onProgress({ stage: "synthesize", done: 0, total: 1 });
   const raw = await callAIPaced({
     system: SYSTEM_PROMPT,
-    user: buildSynthesisPrompt(period, allUnits, topics, schema),
+    user: buildSynthesisPrompt(period, allUnits, topics, schema, carryOver),
     maxTokens: 4000,
     jsonSchema: schema,
   });

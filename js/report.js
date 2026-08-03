@@ -8,7 +8,10 @@
 import { getPosts, getReports, hasReport, addReport, newReportId, getSettings } from "./store.js";
 import { runReportWorkflow } from "./workflow.js";
 
-export const REPORT_SCHEMA_VERSION = 1;
+// スキーマ版数。1 = 初版 / 2 = 前回の一手の追跡（previous_action_review）と
+// 持ち越し宿題（open_loops）を追加。既存のv1レポートはlocalStorageにそのまま残るため、
+// 表示側（app.js）は schemaVersion を見て新セクションの描画を分岐する。
+export const REPORT_SCHEMA_VERSION = 2;
 
 // 分析フォーマット（固定スキーマ）
 // Anthropicではoutput_configで出力を強制、Geminiではプロンプト+JSONモードで誘導
@@ -18,7 +21,8 @@ export const REPORT_SCHEMA = {
   required: [
     "mood_score", "mood_trend", "mood_evidence",
     "themes", "emotions", "blind_spot", "contradiction",
-    "suggestion", "reread_post_ids", "letter",
+    "suggestion", "previous_action_review", "open_loops",
+    "reread_post_ids", "letter",
   ],
   properties: {
     mood_score: { type: "number", description: "期間全体の気分スコア。-2(最悪)〜+2(最高)の実数" },
@@ -60,6 +64,36 @@ export const REPORT_SCHEMA = {
       properties: {
         action: { type: "string", description: "次の期間に取るべき具体的な行為をひとつ" },
         why: { type: "string", description: "なぜそれが今必要か" },
+      },
+    },
+    previous_action_review: {
+      type: "object",
+      additionalProperties: false,
+      required: ["status", "evidence"],
+      description: "前回レポートで提案した『次の一手』の実行状況。前回レポートが無い場合は status を \"unknown\"、evidence を空文字にすること",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["done", "partial", "not_done", "unknown"],
+          description: "前回の一手を今期の記録から見て実行できていたか。done=実行された / partial=部分的 / not_done=手つかず / unknown=前回レポートが無い、または判断材料が記録に無い。忖度せず率直に",
+        },
+        evidence: {
+          type: "string",
+          description: "その判定の根拠になった今期の記述を1〜2文で。前回レポートが無い場合や根拠が無い場合は空文字",
+        },
+      },
+    },
+    open_loops: {
+      type: "array",
+      description: "未解決のまま持ち越されている宿題・保留中の決定（最大5件）。解決済みのものは載せない。該当が無ければ空配列",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label", "note"],
+        properties: {
+          label: { type: "string", description: "宿題・保留中の決定を短く（20字程度）" },
+          note: { type: "string", description: "なぜ未解決なのか／いつから持ち越されているか" },
+        },
       },
     },
     reread_post_ids: { type: "array", items: { type: "string" }, description: "いま読み返す価値のあるポストのID（最大3件）" },
@@ -142,6 +176,79 @@ export function pendingWeekly(now = new Date()) {
   return listGeneratablePeriods(now).find((p) => p.type === "weekly") || null;
 }
 
+// ---- 持ち越し文脈（レポートに記憶を持たせる） ----
+//
+// レポートが互いを読まないと、AIの出す「次の一手」は誰にも追跡されない開ループになる。
+// 同じ粒度（週次なら週次）の直近レポートから suggestion と open_loops を取り出して
+// 次回の生成プロンプトに差し込み、「先週言われたことをやったか」を毎回判定させて閉じる。
+
+// この期間の直前にあたる、同じ periodType のレポート1件
+function previousReportOf(period) {
+  return getReports()
+    .filter((r) => r.periodType === period.type && new Date(r.from) < period.from)
+    .sort((a, b) => new Date(b.from) - new Date(a.from))[0] || null;
+}
+
+// 直近レポートを短いテキストブロックにする。差し込む材料が無ければ null。
+export function buildCarryOver(period) {
+  const prev = previousReportOf(period);
+  if (!prev) return null;
+  const d = prev.data || {};
+  const action = (d.suggestion?.action || "").trim();
+  const why = (d.suggestion?.why || "").trim();
+  const loops = (Array.isArray(d.open_loops) ? d.open_loops : [])
+    .filter((o) => o && String(o.label || "").trim())
+    .slice(0, 5);
+  if (!action && loops.length === 0) return null; // 判定の材料が無い（＝前回無しと同じ扱い）
+
+  const lines = [`【持ち越し文脈 — 前回の続きとして読むこと】`];
+  lines.push(`前回（${prev.periodLabel}）、他者としてのあなたはこう提案した。`);
+  if (action) {
+    lines.push(`- 次の一手: ${action}`);
+    if (why) lines.push(`  （そう言った理由: ${why}）`);
+  }
+  if (loops.length) {
+    lines.push(`- そのとき持ち越しになっていた宿題:`);
+    loops.forEach((o) => {
+      const note = String(o.note || "").trim();
+      lines.push(`  ・${String(o.label).trim()}${note ? `（${note}）` : ""}`);
+    });
+  }
+  lines.push("");
+  lines.push(`今期の記録の中に、この一手が実行された／されなかった証跡があるか率直に判定し、previous_action_review に書くこと。忖度も過大評価もしない。記録に証跡が見当たらないなら status は "unknown" でよい。`);
+  lines.push(`上の宿題のうち今期も未解決のまま残っているものと、今期あらたに宙に浮いた決定を open_loops に引き継ぐこと。片づいたものは落とす。`);
+
+  return { text: lines.join("\n"), report: prev };
+}
+
+// ---- schemaVersion 2 フィールドの後処理 ----
+//
+// workflow.js の reconcile() はドメイン非依存を保つ設計なので、このスキーマ固有の
+// 正規化はワークフロー側には置かず、ここで最終結果に当てる。
+
+const REVIEW_STATUSES = ["done", "partial", "not_done", "unknown"];
+
+export function finalizeCarryOverFields(data, { hasPrevious = false } = {}) {
+  const pr = data.previous_action_review;
+  let status = pr && REVIEW_STATUSES.includes(pr.status) ? pr.status : "unknown";
+  let evidence = pr && typeof pr.evidence === "string" ? pr.evidence.trim() : "";
+  // 前回レポートが無い期間で done/not_done を名乗らせない（追跡対象が存在しない）
+  if (!hasPrevious) {
+    status = "unknown";
+    evidence = "";
+  }
+  data.previous_action_review = { status, evidence };
+
+  data.open_loops = (Array.isArray(data.open_loops) ? data.open_loops : [])
+    .map((o) => ({
+      label: String(o?.label ?? "").trim(),
+      note: String(o?.note ?? "").trim(),
+    }))
+    .filter((o) => o.label)
+    .slice(0, 5);
+  return data;
+}
+
 // ---- 生成 ----
 //
 // 実際の整形アルゴリズム（正規化→抽出→統合→照合の多段パイプライン）は workflow.js に
@@ -153,10 +260,13 @@ export async function generateReport(period, { onProgress } = {}) {
   if (posts.length === 0) throw new Error("この期間のポストがありません");
 
   const s = getSettings();
+  const carryOver = buildCarryOver(period);
   const { data, pipeline } = await runReportWorkflow(period, posts, {
     schema: REPORT_SCHEMA,
+    carryOver: carryOver?.text || "",
     onProgress,
   });
+  finalizeCarryOverFields(data, { hasPrevious: Boolean(carryOver) });
 
   const report = {
     id: newReportId(),
@@ -170,7 +280,8 @@ export async function generateReport(period, { onProgress } = {}) {
     provider: s.provider,
     model: s.provider === "gemini" ? s.geminiModel : s.anthropicModel,
     createdAt: new Date().toISOString(),
-    pipeline, // 生成の来歴（mode / chunks / units / requests / topics）
+    // 生成の来歴（mode / chunks / units / requests / topics）＋どのレポートを引き継いだか
+    pipeline: { ...pipeline, carryOverFrom: carryOver?.report.periodKey || null },
     data,
   };
   addReport(report);
@@ -190,6 +301,24 @@ export function reportTimeSeries() {
       trend: r.data.mood_trend,
       themes: (r.data.themes || []).map((t) => t.name),
     }));
+}
+
+// 提案の実行率 — 開ループが閉じているかの指標。
+// 追跡フィールドを持つ schemaVersion 2 以降のレポートだけを対象にする（v1は判定不能）。
+export function suggestionFollowThrough() {
+  const tracked = getReports().filter((r) => (r.schemaVersion || 1) >= 2);
+  const count = { done: 0, partial: 0, not_done: 0, unknown: 0 };
+  tracked.forEach((r) => {
+    const st = r.data?.previous_action_review?.status;
+    count[REVIEW_STATUSES.includes(st) ? st : "unknown"] += 1;
+  });
+  const judged = count.done + count.partial + count.not_done;
+  return {
+    total: tracked.length,
+    judged,
+    ...count,
+    rate: judged ? count.done / judged : null, // 完全実行のみを分子にする
+  };
 }
 
 export function recurringThemes(minCount = 2) {
