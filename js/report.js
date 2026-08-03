@@ -321,6 +321,30 @@ export function suggestionFollowThrough() {
   };
 }
 
+// 自己申告の気分（post.mood）と、AIが観測した気分（report.data.mood_score）を
+// レポート単位で突き合わせる。「自己認識と他者観測のズレ」を見るための材料。
+// 新たなAPI呼び出しは不要（両方とも既存データから求まる）。
+export function selfReportedMoodByPeriod() {
+  const posts = getPosts();
+  return getReports()
+    .slice()
+    .sort((a, b) => new Date(a.from) - new Date(b.from))
+    .map((r) => {
+      const moods = postsInRange(posts, new Date(r.from), new Date(r.to))
+        .map((p) => p.mood)
+        .filter((m) => m != null);
+      const selfMood = moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : null;
+      return {
+        periodKey: r.periodKey,
+        periodType: r.periodType,
+        label: r.periodLabel,
+        from: r.from,
+        selfMood,
+        aiMood: r.data.mood_score,
+      };
+    });
+}
+
 export function recurringThemes(minCount = 2) {
   const count = {};
   getReports().forEach((r) => {
