@@ -15,7 +15,7 @@ import {
 import { milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
 import { stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
 import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, currentModelLabel } from "./ai.js";
-import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, recurringThemes } from "./report.js";
+import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, recurringThemes, suggestionFollowThrough } from "./report.js";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -519,6 +519,42 @@ function pipelineNote(p) {
   return " / 一括解析";
 }
 
+// 前回の一手の追跡（schemaVersion 2 以降）。開ループが閉じたかを、手紙と同じ見える階層に出す。
+const ACTION_REVIEW = {
+  done:     { icon: "✅", label: "前回の一手: 実行できていた", cls: "fu-done" },
+  partial:  { icon: "🔸", label: "前回の一手: 部分的に実行",   cls: "fu-partial" },
+  not_done: { icon: "⭕️", label: "前回の一手: 手つかず",       cls: "fu-notdone" },
+  unknown:  { icon: "—",  label: "前回の一手: 判定できず",     cls: "fu-unknown" },
+};
+
+function followUpHtml(r) {
+  if ((r.schemaVersion || 1) < 2) return ""; // v1レポートはこのフィールドを持たない
+  const pr = r.data.previous_action_review;
+  if (!pr) return "";
+  const meta = ACTION_REVIEW[pr.status] || ACTION_REVIEW.unknown;
+  // 追跡対象が無かった期間（前回レポート無し）で、根拠も無いなら黙って出さない
+  if (pr.status === "unknown" && !pr.evidence) return "";
+  return `
+    <div class="report-followup">
+      <span class="fu-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
+      ${pr.evidence ? `<span class="fu-evidence">${escapeHtml(pr.evidence)}</span>` : ""}
+    </div>`;
+}
+
+function openLoopsHtml(r) {
+  if ((r.schemaVersion || 1) < 2) return "";
+  const loops = Array.isArray(r.data.open_loops) ? r.data.open_loops : [];
+  if (loops.length === 0) return "";
+  const items = loops.map((o) =>
+    `<li><span class="loop-label">${escapeHtml(o.label)}</span>${o.note ? `<span class="loop-note">${escapeHtml(o.note)}</span>` : ""}</li>`
+  ).join("");
+  return `
+    <div class="report-loops">
+      <div class="loops-head">🔁 持ち越している宿題</div>
+      <ul class="loops-list">${items}</ul>
+    </div>`;
+}
+
 function reportCardHtml(r) {
   const d = r.data;
   const themes = (d.themes || []).map((t) =>
@@ -539,7 +575,9 @@ function reportCardHtml(r) {
       <span class="report-period">${r.periodType === "weekly" ? "📅" : "🗓"} ${escapeHtml(r.periodLabel)}</span>
       <span class="report-mood" title="AIが観測した気分スコア">${d.mood_score >= 0 ? "+" : ""}${Number(d.mood_score).toFixed(1)} ${TREND_LABEL[d.mood_trend] || ""}</span>
     </div>
+    ${followUpHtml(r)}
     <div class="report-letter">${renderBody(d.letter)}</div>
+    ${openLoopsHtml(r)}
     <details class="report-details">
       <summary>構造データを見る</summary>
       <h4>テーマ</h4>${themes || '<p class="muted">なし</p>'}
@@ -598,10 +636,34 @@ function renderMetaAnalysis() {
       ${dots}
     </svg>`;
 
+  renderFollowThrough();
+
   const recur = recurringThemes(2);
   $("#metaThemes").innerHTML = recur.length
     ? `<p class="muted">繰り返し現れるテーマ（あなたの重心）:</p><p>${recur.map(([name, c]) => `<span class="emotion-chip">${escapeHtml(name)} ×${c}</span>`).join(" ")}</p>`
     : "";
+}
+
+// 提案の実行率 — 「他者の一手」が実際に閉じているかの指標。
+// 追跡フィールドを持たないv1レポートは分母に入れない。
+function renderFollowThrough() {
+  const ft = suggestionFollowThrough();
+  const el = $("#metaFollowThrough");
+  if (ft.total === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  const rate = ft.rate == null ? "—" : `${Math.round(ft.rate * 100)}%`;
+  const chips = [
+    `<span class="emotion-chip">✅ 実行 ${ft.done}</span>`,
+    `<span class="emotion-chip">🔸 部分 ${ft.partial}</span>`,
+    `<span class="emotion-chip">⭕️ 手つかず ${ft.not_done}</span>`,
+    ft.unknown ? `<span class="emotion-chip">— 判定不能 ${ft.unknown}</span>` : "",
+  ].join(" ");
+  el.innerHTML = `
+    <p class="muted">提案の実行率（追跡できるレポート${ft.total}件のうち、判定できた${ft.judged}件が分母）:</p>
+    <p class="follow-rate">${rate}</p>
+    <p>${chips}</p>`;
 }
 
 // ---------- ローカル統計 ----------
