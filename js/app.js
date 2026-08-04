@@ -449,6 +449,9 @@ function updateVineBadge() {
 
 // ---------- レポートビュー ----------
 
+const PERIOD_TYPE_LABEL = { weekly: "📅 週次", monthly: "🗓 月次", quarterly: "📆 四半期", yearly: "🌍 年次" };
+const ROLLUP_PERIOD_TYPES = ["quarterly", "yearly"];
+
 function renderReportView() {
   renderPeriodSelect();
   renderMetaAnalysis();
@@ -473,7 +476,7 @@ function renderPeriodSelect() {
   sel.disabled = false;
   $("#generateReportBtn").disabled = false;
   sel.innerHTML = periods.map((p, i) =>
-    `<option value="${i}">${p.type === "weekly" ? "📅 週次" : "🗓 月次"} ${p.label}（${p.count}件）</option>`
+    `<option value="${i}">${PERIOD_TYPE_LABEL[p.type] || p.type} ${p.label}（${p.count}件）</option>`
   ).join("");
   $("#generateHint").textContent = hasApiKey()
     ? `使用モデル: ${currentModelLabel()}`
@@ -517,6 +520,8 @@ const TREND_LABEL = { up: "↗ 上向き", flat: "→ 安定", down: "↘ 下向
 function pipelineNote(p) {
   if (!p) return "";
   if (p.mode === "map-reduce") return ` / 多段解析（${p.chunks}分割→${p.units}観測ユニット, API${p.requests}回）`;
+  if (p.mode === "rollup-map-reduce") return ` / ロールアップ多段解析（${p.chunks}グループ→${p.units}件のレポートを統合, API${p.requests}回）`;
+  if (p.mode === "rollup-single") return ` / ロールアップ一括解析（${p.units}件のレポートを統合）`;
   return " / 一括解析";
 }
 
@@ -570,10 +575,15 @@ function reportCardHtml(r) {
     .map((p) => `<blockquote><span class="q-meta">${fmtDateTime(p.createdAt)}</span>${renderBody(p.text)}</blockquote>`)
     .join("");
 
+  const isRollup = ROLLUP_PERIOD_TYPES.includes(r.periodType);
+  const countNote = isRollup
+    ? `レポート${r.reportCount ?? "?"}件（雑記${r.postCount}件相当）を統合`
+    : `雑記${r.postCount}件`;
+
   return `
-  <article class="card report-card" data-report-id="${r.id}">
+  <article class="card report-card${isRollup ? " report-card-rollup" : ""}" data-report-id="${r.id}">
     <div class="report-head">
-      <span class="report-period">${r.periodType === "weekly" ? "📅" : "🗓"} ${escapeHtml(r.periodLabel)}</span>
+      <span class="report-period">${PERIOD_TYPE_LABEL[r.periodType] || r.periodType} ${escapeHtml(r.periodLabel)}</span>
       <span class="report-mood" title="AIが観測した気分スコア">${d.mood_score >= 0 ? "+" : ""}${Number(d.mood_score).toFixed(1)} ${TREND_LABEL[d.mood_trend] || ""}</span>
     </div>
     ${followUpHtml(r)}
@@ -587,7 +597,7 @@ function reportCardHtml(r) {
       ${d.contradiction ? `<h4>矛盾・ズレ</h4><p>${escapeHtml(d.contradiction)}</p>` : ""}
       <h4>次の一手</h4><p><b>${escapeHtml(d.suggestion?.action || "")}</b><br><span class="muted">${escapeHtml(d.suggestion?.why || "")}</span></p>
       ${reread ? `<h4>読み返す価値のある雑記</h4>${reread}` : ""}
-      <p class="muted report-meta">雑記${r.postCount}件 / ${escapeHtml(r.model)}${pipelineNote(r.pipeline)} / ${fmtDateTime(r.createdAt)}
+      <p class="muted report-meta">${countNote} / ${escapeHtml(r.model)}${pipelineNote(r.pipeline)} / ${fmtDateTime(r.createdAt)}
         <button class="pa-btn danger" data-report-delete="${r.id}">レポート削除</button></p>
     </details>
   </article>`;

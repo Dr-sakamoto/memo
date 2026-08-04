@@ -6,7 +6,7 @@
 // どのAIプロバイダにも依存しない汎用データになる。
 
 import { getPosts, getReports, hasReport, addReport, newReportId, getSettings } from "./store.js";
-import { runReportWorkflow } from "./workflow.js";
+import { runReportWorkflow, runRollupWorkflow } from "./workflow.js";
 
 // スキーマ版数。1 = 初版 / 2 = 前回の一手の追跡（previous_action_review）と
 // 持ち越し宿題（open_loops）を追加。既存のv1レポートはlocalStorageにそのまま残るため、
@@ -120,14 +120,21 @@ function fmtYmd(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function quarterOf(date) {
+  return Math.floor(date.getMonth() / 3) + 1;
+}
+
 export function periodKeyOf(type, from) {
-  return type === "monthly"
-    ? `monthly:${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}`
-    : `weekly:${fmtYmd(from)}`;
+  if (type === "monthly") return `monthly:${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}`;
+  if (type === "quarterly") return `quarterly:${from.getFullYear()}-Q${quarterOf(from)}`;
+  if (type === "yearly") return `yearly:${from.getFullYear()}`;
+  return `weekly:${fmtYmd(from)}`;
 }
 
 export function periodLabelOf(type, from, to) {
   if (type === "monthly") return `${from.getFullYear()}年${from.getMonth() + 1}月`;
+  if (type === "quarterly") return `${from.getFullYear()}年Q${quarterOf(from)}`;
+  if (type === "yearly") return `${from.getFullYear()}年`;
   const end = new Date(to.getTime() - 1);
   return `${from.getMonth() + 1}/${from.getDate()}〜${end.getMonth() + 1}/${end.getDate()}の週`;
 }
@@ -137,6 +144,28 @@ function postsInRange(posts, from, to) {
     const t = new Date(p.createdAt).getTime();
     return t >= from.getTime() && t < to.getTime();
   });
+}
+
+function reportsInRange(reports, from, to) {
+  return reports.filter((r) => {
+    const t = new Date(r.from).getTime();
+    return t >= from.getTime() && t < to.getTime();
+  });
+}
+
+// ロールアップ（四半期・年次）の入力対象。ロールアップ自身は入れ子にしない
+// （週・月の一次観測だけを「観測ユニット」相当として上位のreduceに渡す）。
+function rollupSourceReports() {
+  return getReports().filter((r) => r.periodType === "weekly" || r.periodType === "monthly");
+}
+
+function quarterStartOf(date) {
+  const d = startOfDay(date);
+  return new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1);
+}
+
+function yearStartOf(date) {
+  return new Date(startOfDay(date).getFullYear(), 0, 1);
 }
 
 // 生成可能な期間 = 「完了した週/月」で、ポストがあり、レポート未作成のもの（新しい順）
@@ -166,6 +195,35 @@ export function listGeneratablePeriods(now = new Date()) {
     const key = periodKeyOf("monthly", ms);
     if (hasReport(key)) continue;
     out.push({ type: "monthly", from: ms, to: me, key, label: periodLabelOf("monthly", ms, me), count: inRange.length });
+  }
+
+  // ロールアップ（四半期・年次）: 週次・月次とは別の入力（reports）・別の完了条件で判定する。
+  // 対象期間内に週次/月次レポートが2件以上なければ「熟成」させる材料が無いのでスキップ。
+  const sourceReports = rollupSourceReports();
+  if (sourceReports.length) {
+    const firstReportFrom = sourceReports
+      .map((r) => new Date(r.from))
+      .sort((a, b) => a - b)[0];
+
+    const thisQuarterStart = quarterStartOf(now);
+    for (let qs = quarterStartOf(firstReportFrom); qs < thisQuarterStart; qs = new Date(qs.getFullYear(), qs.getMonth() + 3, 1)) {
+      const qe = new Date(qs.getFullYear(), qs.getMonth() + 3, 1);
+      const inRange = reportsInRange(sourceReports, qs, qe);
+      if (inRange.length < 2) continue;
+      const key = periodKeyOf("quarterly", qs);
+      if (hasReport(key)) continue;
+      out.push({ type: "quarterly", from: qs, to: qe, key, label: periodLabelOf("quarterly", qs, qe), count: inRange.length });
+    }
+
+    const thisYearStart = yearStartOf(now);
+    for (let ys = yearStartOf(firstReportFrom); ys < thisYearStart; ys = new Date(ys.getFullYear() + 1, 0, 1)) {
+      const ye = new Date(ys.getFullYear() + 1, 0, 1);
+      const inRange = reportsInRange(sourceReports, ys, ye);
+      if (inRange.length < 2) continue;
+      const key = periodKeyOf("yearly", ys);
+      if (hasReport(key)) continue;
+      out.push({ type: "yearly", from: ys, to: ye, key, label: periodLabelOf("yearly", ys, ye), count: inRange.length });
+    }
   }
 
   return out.sort((a, b) => b.from - a.from);
@@ -255,17 +313,38 @@ export function finalizeCarryOverFields(data, { hasPrevious = false } = {}) {
 // 内包されており、無造作な雑記ログを毎回この固定スキーマに落とし込む。ここはドメインの
 // スキーマを注入してワークフローを回し、来歴（pipeline）付きでレポートを保存するだけ。
 
-export async function generateReport(period, { onProgress } = {}) {
-  const posts = postsInRange(getPosts(), period.from, period.to);
-  if (posts.length === 0) throw new Error("この期間のポストがありません");
+const ROLLUP_TYPES = ["quarterly", "yearly"];
 
+export async function generateReport(period, { onProgress } = {}) {
+  const isRollup = ROLLUP_TYPES.includes(period.type);
   const s = getSettings();
   const carryOver = buildCarryOver(period);
-  const { data, pipeline } = await runReportWorkflow(period, posts, {
-    schema: REPORT_SCHEMA,
-    carryOver: carryOver?.text || "",
-    onProgress,
-  });
+
+  let data, pipeline, postCount, reportCount;
+  if (isRollup) {
+    const reports = reportsInRange(rollupSourceReports(), period.from, period.to);
+    if (reports.length < 2) throw new Error("この期間の対象レポートが不足しています（週次・月次が2件以上必要）");
+    const built = await runRollupWorkflow(period, reports, {
+      schema: REPORT_SCHEMA,
+      carryOver: carryOver?.text || "",
+      onProgress,
+    });
+    data = built.data;
+    pipeline = built.pipeline;
+    reportCount = reports.length;
+    postCount = reports.reduce((sum, r) => sum + (r.postCount || 0), 0);
+  } else {
+    const posts = postsInRange(getPosts(), period.from, period.to);
+    if (posts.length === 0) throw new Error("この期間のポストがありません");
+    const built = await runReportWorkflow(period, posts, {
+      schema: REPORT_SCHEMA,
+      carryOver: carryOver?.text || "",
+      onProgress,
+    });
+    data = built.data;
+    pipeline = built.pipeline;
+    postCount = posts.length;
+  }
   finalizeCarryOverFields(data, { hasPrevious: Boolean(carryOver) });
 
   const report = {
@@ -276,7 +355,8 @@ export async function generateReport(period, { onProgress } = {}) {
     periodLabel: period.label,
     from: period.from.toISOString(),
     to: period.to.toISOString(),
-    postCount: posts.length,
+    postCount,
+    ...(isRollup ? { reportCount } : {}),
     provider: s.provider,
     model: s.provider === "gemini" ? s.geminiModel : s.anthropicModel,
     createdAt: new Date().toISOString(),
@@ -292,6 +372,7 @@ export async function generateReport(period, { onProgress } = {}) {
 
 export function reportTimeSeries() {
   return getReports()
+    .filter((r) => !ROLLUP_TYPES.includes(r.periodType)) // ロールアップは週・月と粒度が違うので同じ軸に乗せない
     .slice()
     .sort((a, b) => new Date(a.from) - new Date(b.from))
     .map((r) => ({
@@ -327,6 +408,7 @@ export function suggestionFollowThrough() {
 export function selfReportedMoodByPeriod() {
   const posts = getPosts();
   return getReports()
+    .filter((r) => !ROLLUP_TYPES.includes(r.periodType)) // ロールアップは同じ軸に混ぜない
     .slice()
     .sort((a, b) => new Date(a.from) - new Date(b.from))
     .map((r) => {
