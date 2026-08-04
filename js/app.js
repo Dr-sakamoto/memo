@@ -15,7 +15,7 @@ import {
 import { milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
 import { stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
 import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, currentModelLabel } from "./ai.js";
-import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, recurringThemes, suggestionFollowThrough } from "./report.js";
+import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, recurringThemes, suggestionFollowThrough, selfReportedMoodByPeriod } from "./report.js";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -452,6 +452,7 @@ function updateVineBadge() {
 function renderReportView() {
   renderPeriodSelect();
   renderMetaAnalysis();
+  renderMoodGap();
   renderReportList();
   renderMoodChart();
   renderLocalStats();
@@ -664,6 +665,77 @@ function renderFollowThrough() {
     <p class="muted">提案の実行率（追跡できるレポート${ft.total}件のうち、判定できた${ft.judged}件が分母）:</p>
     <p class="follow-rate">${rate}</p>
     <p>${chips}</p>`;
+}
+
+// 自己申告の気分（コンポーザーで記録した mood）と、AIが観測した気分（レポートの
+// mood_score）を重ねる。「自己認識と他者観測のズレ」＝自己分析の核心。
+// 週次・月次は粒度が違うので同じ線に混ぜない（#metaChart と同じ轍を踏まない）。
+const GAP_TYPE_LABEL = { weekly: "📅 週次", monthly: "🗓 月次" };
+const MOOD_GAP_THRESHOLD = 0.8;
+
+function renderMoodGap() {
+  const series = selfReportedMoodByPeriod();
+  if (series.length < 2) {
+    $("#moodGapCard").hidden = true;
+    return;
+  }
+  $("#moodGapCard").hidden = false;
+
+  const groups = new Map();
+  series.forEach((s) => {
+    if (!groups.has(s.periodType)) groups.set(s.periodType, []);
+    groups.get(s.periodType).push(s);
+  });
+
+  const divergent = [];
+  $("#moodGapChart").innerHTML = Array.from(groups.entries())
+    .map(([type, pts]) => moodGapSvg(GAP_TYPE_LABEL[type] || type, pts, divergent))
+    .join("");
+
+  $("#moodGapNote").innerHTML = divergent.length
+    ? `<p class="mood-gap-warn">この期間、あなたの自己申告と他者の観測は大きくズレている: ${divergent.map(escapeHtml).join(" / ")}</p>`
+    : "";
+}
+
+function moodGapSvg(label, pts, divergentOut) {
+  const W = 640, H = 140, pad = 30;
+  const step = pts.length > 1 ? (W - pad * 2) / (pts.length - 1) : 0;
+  const y = (v) => H / 2 - (v / 2) * (H / 2 - 20);
+  const x = (i) => pad + i * step;
+
+  // どちらの観測も大きくズレている点だけ強調する（自己申告が無い期間は判定不能）
+  const big = pts.map((p) => p.selfMood != null && Math.abs(p.selfMood - p.aiMood) >= MOOD_GAP_THRESHOLD);
+  big.forEach((isBig, i) => { if (isBig) divergentOut.push(pts[i].label); });
+
+  // 自己申告は実線。値が無い期間は線を途切れさせる（0として描かない）
+  let selfPath = "";
+  let drawing = false;
+  pts.forEach((p, i) => {
+    if (p.selfMood == null) { drawing = false; return; }
+    selfPath += `${drawing ? "L" : "M"} ${x(i).toFixed(1)} ${y(p.selfMood).toFixed(1)} `;
+    drawing = true;
+  });
+  selfPath = selfPath.trim();
+
+  // AI観測は破線。全期間に値がある前提（レポートには必ずmood_scoreがある）
+  const aiPath = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(p.aiMood).toFixed(1)}`).join(" ");
+
+  const selfDots = pts.map((p, i) => p.selfMood == null ? "" :
+    `<circle cx="${x(i).toFixed(1)}" cy="${y(p.selfMood).toFixed(1)}" r="${big[i] ? 6 : 3.5}" fill="#a9b23f"><title>${escapeHtml(p.label)} 自己申告: ${p.selfMood.toFixed(1)}</title></circle>`
+  ).join("");
+  const aiDots = pts.map((p, i) =>
+    `<circle cx="${x(i).toFixed(1)}" cy="${y(p.aiMood).toFixed(1)}" r="${big[i] ? 6 : 3.5}" fill="#3f78c2"><title>${escapeHtml(p.label)} AI観測: ${Number(p.aiMood).toFixed(1)}</title></circle>`
+  ).join("");
+
+  return `
+    <p class="muted">${label}（実線: 自己申告 / 破線: AI観測）</p>
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      <line x1="${pad}" y1="${H / 2}" x2="${W - pad}" y2="${H / 2}" stroke="#e6e1f2" stroke-dasharray="4 4"/>
+      ${selfPath ? `<path d="${selfPath}" stroke="#a9b23f" stroke-width="2" fill="none"/>` : ""}
+      <path d="${aiPath}" stroke="#3f78c2" stroke-width="2" stroke-dasharray="5 4" fill="none"/>
+      ${aiDots}
+      ${selfDots}
+    </svg>`;
 }
 
 // ---------- ローカル統計 ----------

@@ -479,6 +479,7 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .loop-label { font-weight: bold; }
 .loop-note { color: var(--muted); margin-left: 6px; font-size: .78rem; }
 .follow-rate { font-size: 1.4rem; font-weight: bold; color: var(--grape); margin: 2px 0 6px; }
+.mood-gap-warn { font-size: .85rem; color: var(--grape); font-weight: bold; margin: 6px 0 0; }
 .report-details { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
 .report-details summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
 .report-details summary:hover { color: var(--text); }
