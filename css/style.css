@@ -437,6 +437,8 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 
 /* ---------- report ---------- */
 .report-card { border-color: var(--accent-soft); }
+/* ロールアップ（四半期・年次）は週・月の一次観測とは階層が違うので視覚的に区別する */
+.report-card-rollup { border-color: var(--grape); border-width: 2px; }
 .report-head {
   display: flex;
   justify-content: space-between;

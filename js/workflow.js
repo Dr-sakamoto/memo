@@ -15,12 +15,13 @@
 // スキーマは呼び出し側（report.js）から注入されるため、この層自体はドメイン非依存。
 
 import { callAIPaced, formatPostsForPrompt, parseJsonLoose, SYSTEM_PROMPT } from "./ai.js";
-import { getSettings } from "./store.js";
+import { getSettings, getPosts } from "./store.js";
 
 // ---- チューニング定数 ----
 const MAX_POSTS_PER_CHUNK = 40;   // 1チャンクの最大ポスト数
 const MAX_CHARS_PER_CHUNK = 6000; // 1チャンクの最大文字数（無料枠のトークンにも優しい粒度）
 const SINGLE_PASS_MAX = 20;       // これ以下のポスト数なら一括処理（API 1回で済ませる）
+const ROLLUP_MAX_CHARS = 8000;    // ロールアップのreduceを一括で投げる文字数の上限
 
 // 抽出(map)ステージの出力スキーマ（観測ユニットの配列）
 const UNIT_EXTRACT_SCHEMA = {
@@ -277,5 +278,130 @@ export async function runReportWorkflow(period, posts, { schema, carryOver = "",
       requests: chunks.length + 1,
       topics: topics.slice(0, 12),
     },
+  };
+}
+
+// ---- ロールアップ（四半期・年次） ----
+//
+// 入力が posts ではなく reports（週次・月次）である点だけが通常のワークフローと違う。
+// 各レポートの構造化データを1件1ブロックのテキストに落とし、それを「観測ユニット」相当
+// として扱ってreduceする。件数は多くても数十件なので基本は1回のAPI呼び出しで完結させ、
+// 文字数が閾値を超えたときだけ chunkPosts と同じ考え方でグループに分けて
+// 事前に凝縮してから最終統合する。
+
+// レポート1件を、後段のreduceに渡す1ブロックのテキストに落とす。
+function reportBlock(r) {
+  const d = r.data || {};
+  const themes = (d.themes || [])
+    .map((t) => `${t.name}(${Math.round((t.weight || 0) * 100)}%): ${t.summary}`)
+    .join(" / ");
+  const emotions = (d.emotions || []).map((e) => `${e.label}×${e.intensity}`).join(" / ");
+  const lines = [
+    `【${r.periodLabel}】`,
+    `気分スコア: ${d.mood_score}（${d.mood_trend}）${d.mood_evidence ? ` — ${d.mood_evidence}` : ""}`,
+  ];
+  if (themes) lines.push(`テーマ: ${themes}`);
+  if (emotions) lines.push(`感情: ${emotions}`);
+  if (d.blind_spot) lines.push(`盲点: ${d.blind_spot}`);
+  if (d.contradiction) lines.push(`矛盾・ズレ: ${d.contradiction}`);
+  if (d.suggestion?.action) lines.push(`提案された次の一手: ${d.suggestion.action}（理由: ${d.suggestion.why || ""}）`);
+  if (Array.isArray(d.reread_post_ids) && d.reread_post_ids.length) lines.push(`読み返す価値のあるポストID: ${d.reread_post_ids.join(",")}`);
+  return lines.join("\n");
+}
+
+// 文字数の予算でレポートブロックをチャンクに割る（chunkPostsと同じ考え方）。
+function chunkReportBlocks(blocks) {
+  const chunks = [];
+  let cur = [];
+  let chars = 0;
+  for (const b of blocks) {
+    if (cur.length && chars + b.length > ROLLUP_MAX_CHARS) {
+      chunks.push(cur);
+      cur = [];
+      chars = 0;
+    }
+    cur.push(b);
+    chars += b.length;
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks;
+}
+
+// 文字数超過時のみ使う、グループ凝縮プロンプト（要約であって最終スキーマではない）。
+function buildRollupGroupPrompt(period, blocks, idx, total) {
+  return `「${period.label}」の一部区間（グループ ${idx}/${total}）にあたる、週次/月次レポート${blocks.length}件の要約です。
+あとで全体を統合するため、失われてはいけない情報（テーマの生成と消滅、繰り返し出てくる盲点、気分の傾向、読み返す価値のあるポストID）を保ったまま、箇条書きで簡潔に凝縮してください。JSON不要、テキストで出力してください。
+
+${blocks.join("\n\n")}`;
+}
+
+function buildRollupPrompt(period, blocks, schema, carryOver) {
+  const schemaHint = JSON.stringify(schema.properties, null, 1);
+  return `${carryOverBlock(carryOver)}以下は「${period.label}」の間に生成された週次/月次レポート（${blocks.length}件）です。週や月の粒度では見えない、より長い時間軸での変化だけを見て、次のスキーマに厳密に従うJSONだけを返してください。JSON以外は出力しないでください。
+
+このロールアップでとくに書くべきこと:
+- 何が始まり、何が終わったか（テーマの生成と消滅）
+- 繰り返し指摘され続けた盲点は何か（＝熟成ではなく停滞のサイン）
+- この期間で本人はどう変わったか
+
+スキーマ（各フィールドのdescriptionに従うこと。reread_post_ids は下のレポート群が挙げていたポストIDの中からのみ選ぶこと。無ければ空配列でよい）:
+${schemaHint}
+
+対象レポート（${period.label}、${blocks.length}件、古い順）:
+${blocks.join("\n\n")}`;
+}
+
+// period のポスト単位の from/to と reports（週次/月次、periodType昇順ではなく古い順に整列済み想定）を受け取り、
+// { data, pipeline } を返す。data は report.js の REPORT_SCHEMA に従う（ロールアップ専用スキーマは作らない）。
+export async function runRollupWorkflow(period, reports, { schema, carryOver = "", onProgress = () => {} } = {}) {
+  if (!schema || !schema.properties) throw new Error("スキーマが指定されていません");
+  const sorted = reports.slice().sort((a, b) => new Date(a.from) - new Date(b.from));
+  if (sorted.length === 0) throw new Error("この期間の対象レポートがありません");
+
+  // reread_post_ids はロールアップでは実在するpost idに絞り込めるとは限らないため、
+  // 既存のreconcile()と同じ検証（現存する全ポストIDに対する照合）にかける。
+  const validIds = new Set(getPosts().map((p) => p.id));
+  const blocks = sorted.map(reportBlock);
+  const totalChars = blocks.reduce((sum, b) => sum + b.length, 0);
+
+  if (totalChars <= ROLLUP_MAX_CHARS) {
+    onProgress({ stage: "synthesize", done: 0, total: 1 });
+    const raw = await callAIPaced({
+      system: SYSTEM_PROMPT,
+      user: buildRollupPrompt(period, blocks, schema, carryOver),
+      maxTokens: 4000,
+      jsonSchema: schema,
+    });
+    const data = reconcile(parseJsonLoose(raw), validIds);
+    onProgress({ stage: "synthesize", done: 1, total: 1 });
+    return { data, pipeline: { mode: "rollup-single", chunks: 1, units: sorted.length, requests: 1, topics: [] } };
+  }
+
+  // 文字数が閾値超過: グループごとに凝縮してから最後に1回で統合する
+  const chunks = chunkReportBlocks(blocks);
+  const condensed = [];
+  onProgress({ stage: "extract", done: 0, total: chunks.length });
+  for (let i = 0; i < chunks.length; i++) {
+    const raw = await callAIPaced({
+      system: SYSTEM_PROMPT,
+      user: buildRollupGroupPrompt(period, chunks[i], i + 1, chunks.length),
+      maxTokens: 2000,
+    });
+    condensed.push(raw.trim());
+    onProgress({ stage: "extract", done: i + 1, total: chunks.length });
+  }
+
+  onProgress({ stage: "synthesize", done: 0, total: 1 });
+  const raw = await callAIPaced({
+    system: SYSTEM_PROMPT,
+    user: buildRollupPrompt(period, condensed, schema, carryOver),
+    maxTokens: 4000,
+    jsonSchema: schema,
+  });
+  const data = reconcile(parseJsonLoose(raw), validIds);
+  onProgress({ stage: "synthesize", done: 1, total: 1 });
+  return {
+    data,
+    pipeline: { mode: "rollup-map-reduce", chunks: chunks.length, units: sorted.length, requests: chunks.length + 1, topics: [] },
   };
 }
