@@ -29,7 +29,7 @@ function escapeHtml(s) {
 }
 
 function renderBody(text) {
-  return escapeHtml(text).replace(/#([^\s#<]+)/g, '<span class="tag">#$1</span>');
+  return escapeHtml(text).replace(/#([^\s#<]+)/g, '<span class="tag" data-tag="$1">#$1</span>');
 }
 
 function fmtDateTime(iso) {
@@ -199,44 +199,181 @@ function postHtml(post, { showActions = true, grouped = false, isCont = false } 
   </article>`;
 }
 
-function renderFeed() {
-  const posts = getPosts();
-  if (posts.length === 0) {
-    $("#feed").innerHTML = `<div class="feed-empty">まだ何もない。ここはあなたと、やがて芽吹く過去のあなただけの場所。<br>最初のひと粒を刻もう。</div>`;
-    return;
-  }
-  // タイムライン全体は新しい順。ただし「連（スレッド）＝連続投稿の一息の塊」は、
-  // その内部だけ時系列順（古い→新しい＝上→下）に並べ替え、1つの .thread ブロックに
-  // まとめて描く。連は書いた順に上から読めるようにし、連と連の間は従来どおり新しい順
-  // を保つ（＝下に行くほど過去）。投稿どうしの継ぎ目は薄い区切り線だけにして「1つの
-  // まとまり」に見せ、その線の端に小さなハサミを置いて、そこから連を断ち切れるようにする。
-  const parts = [];
+// タイムライン全体は新しい順。ただし「連（スレッド）＝連続投稿の一息の塊」は、
+// その内部だけ時系列順（古い→新しい＝上→下）に並べ替え、1つの .thread ブロックに
+// まとめて描く。連は書いた順に上から読めるようにし、連と連の間は従来どおり新しい順
+// を保つ（＝下に行くほど過去）。posts（新しい順）を「単独ポスト」または「連のまとまり」
+// のセグメント列に分ける。絞り込み・ページングの境界はこのセグメント単位で揃える
+// （連の途中では切らない）。
+function buildSegments(posts) {
+  const segments = [];
   let i = 0;
   while (i < posts.length) {
     const p = posts[i];
-    if (!p.threadId) { parts.push(postHtml(p)); i++; continue; }
-
-    // 同じ threadId が続く範囲 [i, j]（posts は新しい順）を求める。
+    if (!p.threadId) { segments.push({ type: "single", post: p }); i++; continue; }
     let j = i;
     while (j + 1 < posts.length && posts[j + 1].threadId === p.threadId) j++;
-
-    // 連の内部は古い順に反転して、頭（起点）を上・続きを下にして並べる。
-    const chrono = posts.slice(i, j + 1).reverse();
-    const inner = [];
-    chrono.forEach((post, k) => {
-      inner.push(postHtml(post, { grouped: true, isCont: k > 0 }));
-      if (k < chrono.length - 1) {
-        // 直下の（一つ新しい）投稿との継ぎ目。切り離しは継続側（新しい方）で行う。
-        const newer = chrono[k + 1];
-        inner.push(`
-        <div class="thread-seam">
-          <button class="thread-cut-btn" data-action="cut-thread" data-id="${newer.id}" title="ここで連を切り離す" aria-label="ここで連を切り離す">✂️</button>
-        </div>`);
-      }
-    });
-    parts.push(`<div class="thread">${inner.join("")}</div>`);
+    segments.push({ type: "thread", posts: posts.slice(i, j + 1) });
     i = j + 1;
   }
+  return segments;
+}
+
+function segmentHtml(seg) {
+  if (seg.type === "single") return postHtml(seg.post);
+  // 連の内部は古い順に反転して、頭（起点）を上・続きを下にして並べる。
+  const chrono = seg.posts.slice().reverse();
+  const inner = [];
+  chrono.forEach((post, k) => {
+    inner.push(postHtml(post, { grouped: true, isCont: k > 0 }));
+    if (k < chrono.length - 1) {
+      // 直下の（一つ新しい）投稿との継ぎ目。切り離しは継続側（新しい方）で行う。
+      const newer = chrono[k + 1];
+      inner.push(`
+      <div class="thread-seam">
+        <button class="thread-cut-btn" data-action="cut-thread" data-id="${newer.id}" title="ここで連を切り離す" aria-label="ここで連を切り離す">✂️</button>
+      </div>`);
+    }
+  });
+  return `<div class="thread">${inner.join("")}</div>`;
+}
+
+// ---------- 絞り込み（検索・タグ・気分・期間） ----------
+
+const FEED_PAGE_SIZE = 100;
+let feedFilter = { text: "", moods: new Set(), from: "", to: "", tag: null };
+let feedVisibleCount = FEED_PAGE_SIZE;
+
+function isFilterActive() {
+  return Boolean(feedFilter.text || feedFilter.moods.size > 0 || feedFilter.from || feedFilter.to || feedFilter.tag);
+}
+
+function matchesFilter(post) {
+  const f = feedFilter;
+  if (f.text && !post.text.toLowerCase().includes(f.text)) return false;
+  if (f.moods.size > 0 && !(post.mood != null && f.moods.has(post.mood))) return false;
+  const day = post.createdAt.slice(0, 10);
+  if (f.from && day < f.from) return false;
+  if (f.to && day > f.to) return false;
+  if (f.tag && !(post.tags || []).includes(f.tag)) return false;
+  return true;
+}
+
+function resetFeedPaging() {
+  feedVisibleCount = FEED_PAGE_SIZE;
+}
+
+function topTags(posts, limit = 10) {
+  const counts = new Map();
+  posts.forEach((p) => (p.tags || []).forEach((t) => counts.set(t, (counts.get(t) || 0) + 1)));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
+}
+
+function renderFilterBar(allPosts, filteredCount) {
+  $("#filterMoodPicker").innerHTML = MOODS.map(
+    (m) => `<button class="mood-btn ${feedFilter.moods.has(m.value) ? "active" : ""}" data-filter-mood="${m.value}">${m.emoji}</button>`
+  ).join("");
+
+  const tags = topTags(allPosts);
+  $("#filterTagChips").innerHTML = tags.map(([t, c]) =>
+    `<button class="tag-chip${feedFilter.tag === t ? " active" : ""}" data-tag-filter="${escapeHtml(t)}">#${escapeHtml(t)} <span class="tag-count">${c}</span></button>`
+  ).join("");
+
+  const active = isFilterActive();
+  $("#filterClearBtn").hidden = !active;
+  const countEl = $("#filterCount");
+  countEl.hidden = !active;
+  if (active) countEl.textContent = `${filteredCount}件が一致`;
+}
+
+$("#filterText").addEventListener("input", (e) => {
+  feedFilter.text = e.target.value.trim().toLowerCase();
+  resetFeedPaging();
+  renderFeed();
+});
+$("#filterFrom").addEventListener("change", (e) => {
+  feedFilter.from = e.target.value;
+  resetFeedPaging();
+  renderFeed();
+});
+$("#filterTo").addEventListener("change", (e) => {
+  feedFilter.to = e.target.value;
+  resetFeedPaging();
+  renderFeed();
+});
+$("#filterMoodPicker").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-filter-mood]");
+  if (!btn) return;
+  const v = Number(btn.dataset.filterMood);
+  if (feedFilter.moods.has(v)) feedFilter.moods.delete(v); else feedFilter.moods.add(v);
+  resetFeedPaging();
+  renderFeed();
+});
+$("#filterTagChips").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-tag-filter]");
+  if (!btn) return;
+  const t = btn.dataset.tagFilter;
+  feedFilter.tag = feedFilter.tag === t ? null : t;
+  resetFeedPaging();
+  renderFeed();
+});
+$("#filterClearBtn").addEventListener("click", () => {
+  feedFilter = { text: "", moods: new Set(), from: "", to: "", tag: null };
+  $("#filterText").value = "";
+  $("#filterFrom").value = "";
+  $("#filterTo").value = "";
+  resetFeedPaging();
+  renderFeed();
+});
+
+// 本文中のタグ（#foo）をクリックすると、そのタグでタイムラインを絞り込む
+document.body.addEventListener("click", (e) => {
+  const tagSpan = e.target.closest(".tag[data-tag]");
+  if (!tagSpan) return;
+  const t = tagSpan.dataset.tag;
+  feedFilter.tag = feedFilter.tag === t ? null : t;
+  resetFeedPaging();
+  switchView("timeline");
+  renderFeed();
+});
+
+// もっと読む（ページング。連の途中では切らない）
+document.body.addEventListener("click", (e) => {
+  const btn = e.target.closest("#loadMoreBtn");
+  if (!btn) return;
+  feedVisibleCount += FEED_PAGE_SIZE;
+  renderFeed();
+});
+
+function renderFeed() {
+  const allPosts = getPosts();
+  const active = isFilterActive();
+  const posts = active ? allPosts.filter(matchesFilter) : allPosts;
+  renderFilterBar(allPosts, posts.length);
+
+  if (allPosts.length === 0) {
+    $("#feed").innerHTML = `<div class="feed-empty">まだ何もない。ここはあなたと、やがて芽吹く過去のあなただけの場所。<br>最初のひと粒を刻もう。</div>`;
+    return;
+  }
+  if (posts.length === 0) {
+    $("#feed").innerHTML = `<div class="feed-empty">条件に一致する記録はありません。</div>`;
+    return;
+  }
+
+  const segments = buildSegments(posts);
+
+  // ページング境界を連（threadId）のまとまりに合わせて揃える。
+  let count = 0;
+  let cut = segments.length;
+  for (let s = 0; s < segments.length; s++) {
+    if (count >= feedVisibleCount) { cut = s; break; }
+    count += segments[s].type === "thread" ? segments[s].posts.length : 1;
+  }
+  const visible = segments.slice(0, cut);
+  const hasMore = cut < segments.length;
+
+  const parts = visible.map(segmentHtml);
+  if (hasMore) parts.push(`<button class="btn load-more-btn" id="loadMoreBtn">もっと読む</button>`);
   $("#feed").innerHTML = parts.join("");
 }
 
