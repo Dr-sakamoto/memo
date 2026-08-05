@@ -57,15 +57,15 @@ body {
   align-items: stretch;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--line);
-  height: 34px;
+  height: 46px;
   overflow: hidden;
 }
 .ticker-label {
   flex: none;
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  font-size: .7rem;
+  padding: 0 12px;
+  font-size: .75rem;
   color: var(--grape);
   background: var(--card-2);
   border-right: 1px solid var(--line);
@@ -88,11 +88,11 @@ body {
 }
 .ticker-item {
   color: var(--text);
-  font-size: .8rem;
+  font-size: .95rem;
   padding: 0 2.5em;
   cursor: pointer;
 }
-.ticker-item .t-when { color: var(--muted); font-size: .7rem; margin-right: .6em; }
+.ticker-item .t-when { color: var(--muted); font-size: .78rem; margin-right: .6em; }
 .ticker-item:hover { color: var(--accent); }
 .ticker-locked {
   background: var(--bg-soft);
@@ -403,6 +403,15 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .ai-result:not(:empty) { padding: 12px 14px; margin-top: 8px; }
 .spin { display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- ティッカーから引用→連ジャンプしたときのハイライト ---- */
+.thread-highlight {
+  animation: thread-highlight-pulse 2s ease;
+}
+@keyframes thread-highlight-pulse {
+  0% { box-shadow: 0 0 0 3px var(--accent); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
 
 /* ---------- modal ---------- */
 .modal-backdrop[hidden] { display: none; }
