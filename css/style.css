@@ -481,6 +481,43 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .loop-label { font-weight: bold; }
 .loop-note { color: var(--muted); margin-left: 6px; font-size: .78rem; }
 .follow-rate { font-size: 1.4rem; font-weight: bold; color: var(--grape); margin: 2px 0 6px; }
+
+/* 盲点への応答（一方通行にしない装置）。手紙と同じ階層に置き、details に畳まない */
+.report-blindspot {
+  margin: 10px 0;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+  border-left: 3px solid var(--grape);
+  border-radius: 4px 10px 10px 4px;
+}
+.report-blindspot h4 { font-size: .8rem; color: var(--grape); margin: 8px 0 4px; }
+.report-blindspot h4:first-child { margin-top: 0; }
+.report-blindspot > p { margin: 4px 0; font-size: .88rem; }
+.blindspot-feedback { margin-top: 8px; }
+.fb-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.fb-btn {
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: .78rem;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.fb-btn:hover { border-color: var(--grape); }
+.fb-btn.active { background: var(--grape); border-color: var(--grape); color: #fff; }
+.fb-note {
+  width: 100%;
+  margin-top: 6px;
+  font-size: .82rem;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  resize: vertical;
+}
+.fb-existing { font-size: .82rem; margin: 6px 0 0; }
 .mood-gap-warn { font-size: .85rem; color: var(--grape); font-weight: bold; margin: 6px 0 0; }
 .report-details { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
 .report-details summary { cursor: pointer; color: var(--muted); font-size: .8rem; }

@@ -247,6 +247,18 @@ function pickRicherPost(remote, local) {
   return score(local) >= score(remote) ? local : remote;
 }
 
+// 同じidのレポートが両端末にあるとき、盲点への応答(feedback)が新しい方を残す。
+// 無条件にローカル優先だと、端末Aで書いた応答が端末Bとの同期で消えてしまう。
+function pickFreshFeedbackReport(remote, local) {
+  const at = (r) => r?.feedback?.blindSpot?.at;
+  const localAt = at(local);
+  const remoteAt = at(remote);
+  if (localAt && remoteAt) return new Date(localAt) >= new Date(remoteAt) ? local : remote;
+  if (localAt) return local;
+  if (remoteAt) return remote;
+  return local;
+}
+
 function byCreatedAtDesc(a, b) {
   return new Date(b.createdAt) - new Date(a.createdAt);
 }
@@ -264,7 +276,7 @@ function mergeState(local, remote) {
   const posts = mergeById(local.posts, remote.posts, pickRicherPost)
     .filter((p) => !deletedPostIds[p.id])
     .sort(byCreatedAtDesc);
-  const reports = mergeById(local.reports, remote.reports, (_r, l) => l)
+  const reports = mergeById(local.reports, remote.reports, pickFreshFeedbackReport)
     .filter((r) => !deletedReportIds[r.id])
     .sort(byCreatedAtDesc);
 

@@ -3,7 +3,7 @@ import {
   getPosts, getPost, getSettings, saveSettings,
   addPost, deletePost, setAiReply,
   breakThreadLink,
-  getReports, deleteReport,
+  getReports, deleteReport, setReportFeedback,
   activeDays, daysSinceFirstPost,
   exportJson, importJson, wipeAll,
   onMutation,
@@ -561,6 +561,39 @@ function openLoopsHtml(r) {
     </div>`;
 }
 
+const VERDICT_META = {
+  agree: { icon: "🙆", label: "納得する" },
+  disagree: { icon: "🙅", label: "反論する" },
+  hold: { icon: "🤔", label: "保留" },
+};
+
+// 盲点への応答UI。「AIの断定を鵜呑みにしない装置」なので3択は等価に扱い、
+// 反論を目立たない扱いにしない。応答済みならその内容も表示する。
+function blindSpotHtml(r) {
+  const d = r.data;
+  const blindSpot = String(d.blind_spot || "").trim();
+  if (!blindSpot) return "";
+  const fb = r.feedback?.blindSpot;
+  const buttons = ["agree", "disagree", "hold"].map((v) => {
+    const m = VERDICT_META[v];
+    const active = fb?.verdict === v ? " active" : "";
+    return `<button class="fb-btn fb-${v}${active}" data-fb-verdict="${v}">${m.icon} ${m.label}</button>`;
+  }).join("");
+  const existing = fb
+    ? `<p class="fb-existing">応答: <b>${VERDICT_META[fb.verdict]?.label || fb.verdict}</b>${fb.note ? `「${escapeHtml(fb.note)}」` : ""}<span class="muted"> ${fmtDateTime(fb.at)}</span></p>`
+    : "";
+  return `
+    <div class="report-blindspot">
+      <h4>盲点</h4><p>${escapeHtml(blindSpot)}</p>
+      ${d.contradiction ? `<h4>矛盾・ズレ</h4><p>${escapeHtml(d.contradiction)}</p>` : ""}
+      <div class="blindspot-feedback" data-feedback-report="${r.id}">
+        <div class="fb-buttons">${buttons}</div>
+        <textarea class="fb-note" rows="1" placeholder="一言（任意）">${escapeHtml(fb?.note || "")}</textarea>
+        ${existing}
+      </div>
+    </div>`;
+}
+
 function reportCardHtml(r) {
   const d = r.data;
   const themes = (d.themes || []).map((t) =>
@@ -588,13 +621,12 @@ function reportCardHtml(r) {
     </div>
     ${followUpHtml(r)}
     <div class="report-letter">${renderBody(d.letter)}</div>
+    ${blindSpotHtml(r)}
     ${openLoopsHtml(r)}
     <details class="report-details">
       <summary>構造データを見る</summary>
       <h4>テーマ</h4>${themes || '<p class="muted">なし</p>'}
       <h4>感情の内訳</h4><p>${emotions || '<span class="muted">なし</span>'}</p>
-      <h4>盲点</h4><p>${escapeHtml(d.blind_spot || "")}</p>
-      ${d.contradiction ? `<h4>矛盾・ズレ</h4><p>${escapeHtml(d.contradiction)}</p>` : ""}
       <h4>次の一手</h4><p><b>${escapeHtml(d.suggestion?.action || "")}</b><br><span class="muted">${escapeHtml(d.suggestion?.why || "")}</span></p>
       ${reread ? `<h4>読み返す価値のある雑記</h4>${reread}` : ""}
       <p class="muted report-meta">${countNote} / ${escapeHtml(r.model)}${pipelineNote(r.pipeline)} / ${fmtDateTime(r.createdAt)}
@@ -614,11 +646,21 @@ function renderReportList() {
 
 document.body.addEventListener("click", (e) => {
   const del = e.target.closest("[data-report-delete]");
-  if (!del) return;
-  if (confirm("このレポートを削除しますか？（同じ期間で作り直せます）")) {
-    deleteReport(del.dataset.reportDelete);
-    renderReportView();
-    updatePendingBanner();
+  if (del) {
+    if (confirm("このレポートを削除しますか？（同じ期間で作り直せます）")) {
+      deleteReport(del.dataset.reportDelete);
+      renderReportView();
+      updatePendingBanner();
+    }
+    return;
+  }
+  const fbBtn = e.target.closest("[data-fb-verdict]");
+  if (fbBtn) {
+    const wrap = fbBtn.closest("[data-feedback-report]");
+    const reportId = wrap.dataset.feedbackReport;
+    const note = wrap.querySelector(".fb-note")?.value.trim() || "";
+    setReportFeedback(reportId, { blindSpot: { verdict: fbBtn.dataset.fbVerdict, note, at: new Date().toISOString() } });
+    renderReportList();
   }
 });
 

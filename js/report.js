@@ -247,6 +247,8 @@ function previousReportOf(period) {
     .sort((a, b) => new Date(b.from) - new Date(a.from))[0] || null;
 }
 
+const VERDICT_LABEL = { agree: "納得する", disagree: "反論する", hold: "保留" };
+
 // 直近レポートを短いテキストブロックにする。差し込む材料が無ければ null。
 export function buildCarryOver(period) {
   const prev = previousReportOf(period);
@@ -257,7 +259,10 @@ export function buildCarryOver(period) {
   const loops = (Array.isArray(d.open_loops) ? d.open_loops : [])
     .filter((o) => o && String(o.label || "").trim())
     .slice(0, 5);
-  if (!action && loops.length === 0) return null; // 判定の材料が無い（＝前回無しと同じ扱い）
+  const blindSpot = String(d.blind_spot || "").trim();
+  const feedback = prev.feedback?.blindSpot;
+  const feedbackVerdict = feedback && VERDICT_LABEL[feedback.verdict] ? feedback.verdict : null;
+  if (!action && loops.length === 0 && !(blindSpot && feedbackVerdict)) return null; // 判定の材料が無い（＝前回無しと同じ扱い）
 
   const lines = [`【持ち越し文脈 — 前回の続きとして読むこと】`];
   lines.push(`前回（${prev.periodLabel}）、他者としてのあなたはこう提案した。`);
@@ -275,6 +280,13 @@ export function buildCarryOver(period) {
   lines.push("");
   lines.push(`今期の記録の中に、この一手が実行された／されなかった証跡があるか率直に判定し、previous_action_review に書くこと。忖度も過大評価もしない。記録に証跡が見当たらないなら status は "unknown" でよい。`);
   lines.push(`上の宿題のうち今期も未解決のまま残っているものと、今期あらたに宙に浮いた決定を open_loops に引き継ぐこと。片づいたものは落とす。`);
+
+  if (blindSpot && feedbackVerdict) {
+    lines.push("");
+    lines.push(`前回、他者としてのあなたはこの盲点を指摘した: 「${blindSpot}」`);
+    lines.push(`本人はそれに「${VERDICT_LABEL[feedbackVerdict]}」と応答した${feedback.note ? `（一言: ${String(feedback.note).trim()}）` : ""}。`);
+    lines.push(`今期の記録はその応答を裏づけているか、それとも覆しているか率直に見て、今回の blind_spot / contradiction に反映すること。反論されたからといって指摘を弱めず、記録が指摘を裏づけているならそのまま言い切ること。`);
+  }
 
   return { text: lines.join("\n"), report: prev };
 }
