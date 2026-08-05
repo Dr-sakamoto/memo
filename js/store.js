@@ -229,6 +229,15 @@ export function newReportId() {
   return newId();
 }
 
+// 盲点への応答（納得する/反論する/保留）。他者の指摘を一方通行にしないための唯一の書き込み口。
+export function setReportFeedback(reportId, feedback) {
+  const report = reports.find((r) => r.id === reportId);
+  if (!report) return;
+  report.feedback = feedback;
+  save(REPORTS_KEY, reports);
+  notifyMutation();
+}
+
 // ---- 成長統計 ----
 
 export function activeDays() {
