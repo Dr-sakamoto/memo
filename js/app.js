@@ -319,15 +319,39 @@ $("#quoteSubmitBtn").addEventListener("click", () => {
   updateTicker();
 });
 
+// 引用対象がどの連（スレッド）にいたかをタイムラインで確認できるようにする
+$("#quoteViewThreadBtn").addEventListener("click", () => {
+  if (quoteTargetId) viewPostInTimeline(quoteTargetId);
+});
+
+function viewPostInTimeline(postId) {
+  $("#quoteModal").hidden = true;
+  switchView("timeline");
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.post[data-id="${postId}"]`);
+    if (!el) return;
+    const container = el.closest(".thread") || el;
+    container.scrollIntoView({ behavior: "smooth", block: "center" });
+    container.classList.add("thread-highlight");
+    setTimeout(() => container.classList.remove("thread-highlight"), 2000);
+  });
+}
+
 // ---------- 電光掲示板（ティッカー） ----------
 
-function updateTicker() {
+// 現在流れている内容（投稿id）。すでに表示中なら、投稿・削除・引用の
+// たびに巻き戻して作り直したりしない（＝流れきる前に消える不具合の原因だった）。
+// 中身の入れ替えは、再表示のタイミングか forceRefresh 時だけ行う。
+let tickerRenderedIds = null;
+
+function updateTicker(forceRefresh = false) {
   const days = activeDays();
   const sprouted = isSprouted(days);
   const posts = getPosts();
 
   if (!sprouted) {
     $("#tickerWrap").hidden = true;
+    tickerRenderedIds = null;
     if (posts.length > 0) {
       $("#tickerLocked").hidden = false;
       $("#tickerLockedMsg").textContent = `あと${7 - days}日活動すると発芽し、過去の自分がここに流れ始めます（現在 ${days}/7日）`;
@@ -337,16 +361,21 @@ function updateTicker() {
     return;
   }
 
+  const alreadyShowing = !$("#tickerWrap").hidden && tickerRenderedIds;
+  if (alreadyShowing && !forceRefresh) return;
+
   const picked = pickForTicker(posts, 12);
   if (picked.length === 0) {
     $("#tickerWrap").hidden = true;
     $("#tickerLocked").hidden = false;
     $("#tickerLockedMsg").textContent = "発芽しました。3日以上前のポストが増えると、ここに過去の自分が流れます。";
+    tickerRenderedIds = null;
     return;
   }
 
   $("#tickerLocked").hidden = true;
   $("#tickerWrap").hidden = false;
+  tickerRenderedIds = picked.map((p) => p.id);
 
   const itemsHtml = picked.map((p) => {
     const { label } = milestoneBonus(p);
@@ -358,9 +387,16 @@ function updateTicker() {
   // シームレスにループさせるため2周分並べる
   const track = $("#tickerTrack");
   track.innerHTML = itemsHtml + itemsHtml;
-  const dur = Math.max(30, picked.length * 8);
+  // 速度は件数ではなく実際の描画幅から一定に保つ（文字数次第で速度がバラつき、
+  // 読み切る前に消えたように見えるのを防ぐ）
+  const PX_PER_SEC = 55;
+  const distance = track.scrollWidth / 2;
+  const dur = Math.max(20, distance / PX_PER_SEC);
   track.style.animationDuration = `${dur}s`;
 }
+
+// しばらく経ったら中身を入れ替える（流れている最中には割り込まない）
+setInterval(() => updateTicker(true), 90000);
 
 // ティッカーのポストをクリック → 引用モーダル（過去の自分に接ぎ木する）
 $("#tickerTrack").addEventListener("click", (e) => {
