@@ -68,6 +68,22 @@
         </div>
       </div>
     </div>
+    <div class="feed-filter card" id="feedFilterBar">
+      <div class="filter-row">
+        <input type="text" id="filterText" placeholder="本文を検索">
+        <button class="btn small" id="filterClearBtn" hidden>絞り込み解除</button>
+      </div>
+      <div class="filter-row">
+        <div class="mood-picker" id="filterMoodPicker" title="気分で絞り込み（複数選択可）"></div>
+      </div>
+      <div class="filter-row">
+        <input type="date" id="filterFrom">
+        <span class="muted">〜</span>
+        <input type="date" id="filterTo">
+      </div>
+      <div class="filter-tags" id="filterTagChips"></div>
+      <p class="muted filter-count" id="filterCount" hidden></p>
+    </div>
     <div class="feed" id="feed"></div>
   </section>
 

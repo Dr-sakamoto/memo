@@ -319,6 +319,8 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 }
 .post-body { margin: 8px 0 6px; white-space: pre-wrap; word-break: break-word; }
 .post-body .tag { color: var(--accent); }
+.tag[data-tag] { cursor: pointer; }
+.tag[data-tag]:hover { text-decoration: underline; }
 .post blockquote, .modal blockquote {
   border-left: 3px solid var(--accent-soft);
   background: var(--bg-soft);
@@ -356,6 +358,28 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .ai-reply .ai-icon { flex: none; }
 
 .feed-empty { text-align: center; color: var(--muted); padding: 40px 10px; font-size: .9rem; }
+
+/* ---------- 絞り込みバー ---------- */
+.feed-filter { padding: 10px 12px; }
+.filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.filter-row:last-of-type { margin-bottom: 0; }
+.filter-row input[type="text"] { flex: 1; min-width: 0; }
+.filter-row input[type="date"] { flex: 1; min-width: 0; }
+.filter-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.tag-chip {
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: .78rem;
+  cursor: pointer;
+}
+.tag-chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.tag-count { color: var(--muted); font-size: .7rem; }
+.filter-count { margin: 8px 2px 0; }
+.btn.small { padding: 5px 10px; font-size: .78rem; }
+.load-more-btn { display: block; width: 100%; margin-top: 4px; }
 
 /* ---------- timeaxis ---------- */
 .axis-section h3 {
