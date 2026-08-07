@@ -15,7 +15,7 @@ import {
 import { milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
 import { stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
 import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, currentModelLabel } from "./ai.js";
-import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, recurringThemes, suggestionFollowThrough, selfReportedMoodByPeriod } from "./report.js";
+import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, themeLifecycles, recurringBlindSpots, suggestionFollowThrough, selfReportedMoodByPeriod } from "./report.js";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -837,37 +837,82 @@ document.body.addEventListener("click", (e) => {
   }
 });
 
+// 週次と月次は粒度が違うので同じ軸・同じ線に混ぜない
+// （かつてのバグ: reportTimeSeries()がfromで全レポートをソートして1本の線に結び、
+//   月次の点が週次の点の間に刺さって解釈不能になっていた）。
+const META_TYPE_LABEL = { weekly: "📅 週次", monthly: "🗓 月次" };
+const META_TYPE_COLOR = { weekly: "#7c3aed", monthly: "#c2703f" };
+
+function metaMoodSvg(type, series) {
+  const color = META_TYPE_COLOR[type] || "#7c3aed";
+  const W = 640, H = 140, pad = 30;
+  const step = series.length > 1 ? (W - pad * 2) / (series.length - 1) : 0;
+  const y = (v) => H / 2 - (v / 2) * (H / 2 - 20);
+  const pts = series.map((s, i) => ({ x: pad + i * step, y: y(s.mood), s }));
+  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+  const dots = pts.map((p) =>
+    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${color}"><title>${escapeHtml(p.s.label)}: ${p.s.mood.toFixed(1)}</title></circle>`
+  ).join("");
+  return `
+    <p class="muted">${META_TYPE_LABEL[type] || type}（他者の目が観測した気分スコアの推移）</p>
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      <line x1="${pad}" y1="${H / 2}" x2="${W - pad}" y2="${H / 2}" stroke="#e6e1f2" stroke-dasharray="4 4"/>
+      <path d="${line}" stroke="${color}" stroke-width="2" fill="none"/>
+      ${dots}
+    </svg>`;
+}
+
 function renderMetaAnalysis() {
-  const series = reportTimeSeries();
-  if (series.length < 2) {
+  const groups = reportTimeSeries();
+  const totalReports = groups.reduce((sum, g) => sum + g.series.length, 0);
+  if (totalReports < 2) {
     $("#metaCard").hidden = true;
     return;
   }
   $("#metaCard").hidden = false;
 
-  // AI観測の気分スコア推移
-  const W = 640, H = 140, pad = 30;
-  const step = (W - pad * 2) / Math.max(1, series.length - 1);
-  const y = (v) => H / 2 - (v / 2) * (H / 2 - 20);
-  const pts = series.map((s, i) => ({ x: pad + i * step, y: y(s.mood), s }));
-  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
-  const dots = pts.map((p) =>
-    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${p.s.mood >= 0 ? "#a9b23f" : "#3f78c2"}"><title>${p.s.label}: ${p.s.mood.toFixed(1)}</title></circle>`
-  ).join("");
-  $("#metaChart").innerHTML = `
-    <p class="muted">他者の目が観測した気分スコアの推移（レポートごと）</p>
-    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-      <line x1="${pad}" y1="${H / 2}" x2="${W - pad}" y2="${H / 2}" stroke="#e6e1f2" stroke-dasharray="4 4"/>
-      <path d="${line}" stroke="#7c3aed" stroke-width="2" fill="none"/>
-      ${dots}
-    </svg>`;
+  $("#metaChart").innerHTML = groups
+    .filter((g) => g.series.length > 0)
+    .map((g) => metaMoodSvg(g.type, g.series))
+    .join("");
 
   renderFollowThrough();
+  renderThemeLifecycle();
+  renderBlindSpotRepeat();
+}
 
-  const recur = recurringThemes(2);
-  $("#metaThemes").innerHTML = recur.length
-    ? `<p class="muted">繰り返し現れるテーマ（あなたの重心）:</p><p>${recur.map(([name, c]) => `<span class="emotion-chip">${escapeHtml(name)} ×${c}</span>`).join(" ")}</p>`
-    : "";
+// テーマのライフサイクル — 単なる出現回数の羅列にせず、
+// 「いま生きているテーマ」と「消えたテーマ」を分けて見せる（歴史の熟成の可視化）。
+function renderThemeLifecycle() {
+  const lifecycles = themeLifecycles(2);
+  const el = $("#metaThemes");
+  if (!el) return;
+  if (lifecycles.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  const chip = (e) => `<span class="emotion-chip" title="初出: ${escapeHtml(e.firstLabel)} / 最終: ${escapeHtml(e.lastLabel)}">${escapeHtml(e.name)} ×${e.count}</span>`;
+  const active = lifecycles.filter((e) => e.active);
+  const gone = lifecycles.filter((e) => !e.active);
+  el.innerHTML = `
+    ${active.length ? `<p class="muted">いま生きているテーマ（あなたの重心）:</p><p>${active.map(chip).join(" ")}</p>` : ""}
+    ${gone.length ? `<p class="muted">消えたテーマ:</p><p>${gone.map(chip).join(" ")}</p>` : ""}`;
+}
+
+// 同じ盲点が繰り返し指摘されているかの検出。熟成ではなく停滞のサインなので目立たせる。
+function renderBlindSpotRepeat() {
+  const el = $("#metaBlindSpotRepeat");
+  if (!el) return;
+  const recurring = recurringBlindSpots(0.5);
+  if (recurring.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = `
+    <p class="muted">繰り返し指摘されている盲点（熟成ではなく停滞のサイン）:</p>
+    ${recurring.map((c) => `
+      <p class="blindspot-repeat-warn">「${escapeHtml(c.text)}」<span class="muted"> — ${c.count}回（${c.labels.map(escapeHtml).join(" / ")}）</span></p>
+    `).join("")}`;
 }
 
 // 提案の実行率 — 「他者の一手」が実際に閉じているかの指標。
