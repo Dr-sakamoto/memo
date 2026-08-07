@@ -552,6 +552,16 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 }
 .fb-existing { font-size: .82rem; margin: 6px 0 0; }
 .mood-gap-warn { font-size: .85rem; color: var(--grape); font-weight: bold; margin: 6px 0 0; }
+.blindspot-repeat-warn {
+  font-size: .85rem;
+  font-weight: bold;
+  color: var(--danger);
+  background: var(--bg-soft);
+  border-left: 3px solid var(--danger);
+  border-radius: 4px 10px 10px 4px;
+  padding: 6px 10px;
+  margin: 6px 0;
+}
 .report-details { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
 .report-details summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
 .report-details summary:hover { color: var(--text); }

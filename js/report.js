@@ -382,18 +382,27 @@ export async function generateReport(period, { onProgress } = {}) {
 
 // ---- メタ分析（レポート横断） ----
 
+// periodType（weekly/monthly）ごとにグループ化して返す。
+// 呼び出し側で全グループを1本の折れ線に混ぜないこと（粒度の違う点を繋ぐと解釈不能になる —
+// かつてのバグがこれで、週次の点の間に月次の点が刺さっていた）。
 export function reportTimeSeries() {
-  return getReports()
+  const reports = getReports()
     .filter((r) => !ROLLUP_TYPES.includes(r.periodType)) // ロールアップは週・月と粒度が違うので同じ軸に乗せない
     .slice()
-    .sort((a, b) => new Date(a.from) - new Date(b.from))
-    .map((r) => ({
+    .sort((a, b) => new Date(a.from) - new Date(b.from));
+
+  const groups = new Map();
+  reports.forEach((r) => {
+    if (!groups.has(r.periodType)) groups.set(r.periodType, []);
+    groups.get(r.periodType).push({
       label: r.periodLabel,
       type: r.periodType,
       mood: r.data.mood_score,
       trend: r.data.mood_trend,
       themes: (r.data.themes || []).map((t) => t.name),
-    }));
+    });
+  });
+  return Array.from(groups.entries()).map(([type, series]) => ({ type, series }));
 }
 
 // 提案の実行率 — 開ループが閉じているかの指標。
@@ -439,12 +448,94 @@ export function selfReportedMoodByPeriod() {
     });
 }
 
-export function recurringThemes(minCount = 2) {
-  const count = {};
-  getReports().forEach((r) => {
-    (r.data.themes || []).forEach((t) => { count[t.name] = (count[t.name] || 0) + 1; });
+// テーマのライフサイクル — 出現回数を数えるだけでは「歴史の熟成」は見えない。
+// 各テーマの初出/最終出現の期間と、現在も生きているか（＝一番新しいレポートにも
+// 出ているか）を出すことで、「生きているテーマ」と「消えたテーマ」を分けて見せる。
+export function themeLifecycles(minCount = 2) {
+  const reports = getReports().slice().sort((a, b) => new Date(a.from) - new Date(b.from));
+  if (reports.length === 0) return [];
+  const latestFrom = reports[reports.length - 1].from;
+
+  const byName = new Map();
+  reports.forEach((r) => {
+    (r.data.themes || []).forEach((t) => {
+      if (!t?.name) return;
+      if (!byName.has(t.name)) {
+        byName.set(t.name, { name: t.name, count: 0, firstLabel: r.periodLabel, lastLabel: r.periodLabel, lastFrom: r.from });
+      }
+      const e = byName.get(t.name);
+      e.count += 1;
+      e.lastLabel = r.periodLabel;
+      e.lastFrom = r.from;
+    });
   });
-  return Object.entries(count)
-    .filter(([, c]) => c >= minCount)
-    .sort((a, b) => b[1] - a[1]);
+
+  return Array.from(byName.values())
+    .filter((e) => e.count >= minCount)
+    .map((e) => ({ ...e, active: e.lastFrom === latestFrom }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// ---- 盲点の繰り返し検出（外部ライブラリなし、日本語のまま比較） ----
+//
+// 完全一致は期待できないので、記号・空白を除去したうえでbi-gramのJaccard係数を取る。
+// 閾値以上のものを同じクラスタにまとめ、複数レポートにまたがって出ているものを
+// 「繰り返し指摘されている盲点」として提示する。これは熟成ではなく停滞のサイン。
+
+function normalizeForCompare(s) {
+  return String(s || "")
+    .replace(/[\s　]/g, "")
+    .replace(/[!-/:-@[-`{-~。、！？「」『』（）・〜…\.]/g, "");
+}
+
+function bigramSet(s) {
+  const set = new Set();
+  for (let i = 0; i < s.length - 1; i += 1) set.add(s.slice(i, i + 2));
+  if (s.length === 1) set.add(s);
+  return set;
+}
+
+function jaccard(a, b) {
+  if (a.size === 0 && b.size === 0) return 0;
+  let inter = 0;
+  a.forEach((x) => { if (b.has(x)) inter += 1; });
+  const union = a.size + b.size - inter;
+  return union ? inter / union : 0;
+}
+
+export function recurringBlindSpots(threshold = 0.5) {
+  const items = getReports()
+    .filter((r) => String(r.data?.blind_spot || "").trim())
+    .slice()
+    .sort((a, b) => new Date(a.from) - new Date(b.from))
+    .map((r) => {
+      const text = String(r.data.blind_spot).trim();
+      return { label: r.periodLabel, from: r.from, text, bg: bigramSet(normalizeForCompare(text)) };
+    });
+
+  const used = new Array(items.length).fill(false);
+  const clusters = [];
+  for (let i = 0; i < items.length; i += 1) {
+    if (used[i]) continue;
+    const cluster = [items[i]];
+    for (let j = i + 1; j < items.length; j += 1) {
+      if (used[j]) continue;
+      if (jaccard(items[i].bg, items[j].bg) >= threshold) {
+        cluster.push(items[j]);
+        used[j] = true;
+      }
+    }
+    if (cluster.length >= 2) {
+      used[i] = true;
+      clusters.push(cluster);
+    }
+  }
+
+  return clusters
+    .map((c) => ({
+      text: c[c.length - 1].text, // 最新の言い回しを代表にする
+      count: c.length,
+      labels: c.map((m) => m.label),
+    }))
+    .sort((a, b) => b.count - a.count);
 }
