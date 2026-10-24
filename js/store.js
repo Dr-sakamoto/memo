@@ -2,6 +2,7 @@
 
 const POSTS_KEY = "cns.posts.v1";
 const SETTINGS_KEY = "cns.settings.v1";
+// 旧版のAIレポート。いまは画面に出さないが、同期・エクスポートではそのまま持ち運ぶ（消さない）。
 const REPORTS_KEY = "cns.reports.v1";
 const DELETED_KEY = "cns.deleted.v1"; // 削除の記録（クラウド同期で「削除」を伝播させるための墓標）
 
@@ -14,14 +15,6 @@ export const MOODS = [
 ];
 
 const DEFAULT_SETTINGS = {
-  provider: "anthropic",            // "anthropic" | "gemini"
-  anthropicKey: "",
-  anthropicModel: "claude-opus-4-8",
-  geminiKey: "",
-  geminiModel: "gemini-2.5-flash",
-  aiAutoReply: false,
-  reportWorkflow: "auto",           // "auto" | "force" | "single"（レポート生成の多段解析モード）
-  freeTierRpm: 10,                  // 無料枠対策のAPIレート上限（毎分）
   threadWindowMin: 5,               // 連（スレッド）: 直前の投稿からこの分数以内なら「同じ一息」として自動で束ねる
 };
 
@@ -61,19 +54,7 @@ let deletedIds = load(DELETED_KEY, { postIds: {}, reportIds: {} });
 if (!deletedIds.postIds) deletedIds.postIds = {};
 if (!deletedIds.reportIds) deletedIds.reportIds = {};
 
-let settings = load(SETTINGS_KEY, null);
-if (!settings) {
-  settings = { ...DEFAULT_SETTINGS };
-} else if (settings.anthropicKey === undefined) {
-  // v1設定（apiKey/model）からの移行
-  settings = {
-    ...DEFAULT_SETTINGS,
-    anthropicKey: settings.apiKey || "",
-    anthropicModel: settings.model || DEFAULT_SETTINGS.anthropicModel,
-    aiAutoReply: Boolean(settings.aiAutoReply),
-  };
-  save(SETTINGS_KEY, settings);
-}
+let settings = { ...DEFAULT_SETTINGS, ...load(SETTINGS_KEY, {}) };
 
 export function getPosts() {
   return posts;
@@ -85,11 +66,6 @@ export function getPost(id) {
 
 export function getSettings() {
   return settings;
-}
-
-export function saveSettings(next) {
-  settings = { ...settings, ...next };
-  save(SETTINGS_KEY, settings);
 }
 
 function newId() {
@@ -190,70 +166,6 @@ export function deletePost(id) {
   deletedIds.postIds[id] = new Date().toISOString();
   save(DELETED_KEY, deletedIds);
   notifyMutation();
-}
-
-export function setAiReply(id, text) {
-  const post = getPost(id);
-  if (!post) return;
-  post.aiReply = { text, at: new Date().toISOString() };
-  save(POSTS_KEY, posts);
-  notifyMutation();
-}
-
-// ---- レポート（AIによる構造化解釈の蓄積） ----
-
-export function getReports() {
-  return reports;
-}
-
-export function hasReport(periodKey) {
-  return reports.some((r) => r.periodKey === periodKey);
-}
-
-export function addReport(report) {
-  reports.unshift(report);
-  save(REPORTS_KEY, reports);
-  notifyMutation();
-  return report;
-}
-
-export function deleteReport(id) {
-  reports = reports.filter((r) => r.id !== id);
-  save(REPORTS_KEY, reports);
-  deletedIds.reportIds[id] = new Date().toISOString();
-  save(DELETED_KEY, deletedIds);
-  notifyMutation();
-}
-
-export function newReportId() {
-  return newId();
-}
-
-// 盲点への応答（納得する/反論する/保留）。他者の指摘を一方通行にしないための唯一の書き込み口。
-export function setReportFeedback(reportId, feedback) {
-  const report = reports.find((r) => r.id === reportId);
-  if (!report) return;
-  report.feedback = feedback;
-  save(REPORTS_KEY, reports);
-  notifyMutation();
-}
-
-// ---- 成長統計 ----
-
-export function activeDays() {
-  const days = new Set(posts.map((p) => p.createdAt.slice(0, 10)));
-  return days.size;
-}
-
-export function firstPostDate() {
-  if (posts.length === 0) return null;
-  return new Date(posts[posts.length - 1].createdAt);
-}
-
-export function daysSinceFirstPost() {
-  const first = firstPostDate();
-  if (!first) return 0;
-  return Math.floor((Date.now() - first.getTime()) / 86400000);
 }
 
 // ---- エクスポート / インポート ----
