@@ -8,7 +8,8 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍇</text></svg>">
 
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,25 +19,37 @@
 
 <header class="app-header">
   <div class="header-inner">
-    <h1 class="logo">🍇 MEMO <span class="logo-sub">過去の自分が流れてくるSNS</span></h1>
+    <h1 class="logo">🍇 MEMO</h1>
+    <span class="logo-sub">過去の自分が流れてくるSNS</span>
   </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="home" aria-label="ホーム">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/></svg>
+      <span class="tab-label">ホーム</span>
+    </button>
+    <button class="tab" data-view="log" aria-label="記録">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span class="tab-label">記録</span>
+    </button>
+    <button class="tab" data-view="settings" aria-label="設定">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+      <span class="tab-label">設定</span>
+    </button>
+  </nav>
 </header>
-
-<nav class="tabs" id="tabs">
-  <button class="tab active" data-view="home">ホーム</button>
-  <button class="tab" data-view="log">記録</button>
-  <button class="tab" data-view="settings">設定</button>
-</nav>
 
 <main class="main">
 
   <!-- ===== ホーム（いま書いたもの＋流れてくる過去の自分） ===== -->
   <section class="view" id="view-home">
-    <div class="composer card">
-      <textarea id="composerText" rows="3" placeholder="いま、なにしてる？"></textarea>
-      <div class="composer-footer">
-        <span class="char-count" id="charCount"></span>
-        <button class="btn primary" id="postBtn">刻む</button>
+    <div class="composer">
+      <div class="avatar" aria-hidden="true">🍇</div>
+      <div class="composer-main">
+        <textarea id="composerText" rows="2" placeholder="いま、なにしてる？"></textarea>
+        <div class="composer-footer">
+          <span class="char-count" id="charCount"></span>
+          <button class="btn primary" id="postBtn">ポストする</button>
+        </div>
       </div>
     </div>
 
@@ -47,9 +60,9 @@
 
   <!-- ===== 記録（時系列の全投稿） ===== -->
   <section class="view" id="view-log" hidden>
-    <div class="feed-filter card">
+    <div class="feed-filter">
       <div class="filter-row">
-        <input type="text" id="filterText" placeholder="本文を検索">
+        <input type="search" id="filterText" placeholder="過去のポストを検索">
         <button class="btn small" id="filterClearBtn" hidden>絞り込み解除</button>
       </div>
       <div class="filter-tags" id="filterTagChips"></div>
@@ -145,13 +158,13 @@
 <!-- 引用モーダル -->
 <div class="modal-backdrop" id="quoteModal" hidden>
   <div class="modal card">
-    <h3>引用して刻む（接ぎ木）</h3>
+    <h3>接ぎ木 — いまの自分を重ねる</h3>
     <blockquote id="quoteTarget"></blockquote>
     <button class="btn small" id="quoteViewThreadBtn">🧵 前後を見る</button>
     <textarea id="quoteText" rows="3" placeholder="過去の自分に、いまの自分は何を重ねる？"></textarea>
     <div class="modal-actions">
       <button class="btn" id="quoteCancelBtn">やめる</button>
-      <button class="btn primary" id="quoteSubmitBtn">刻む</button>
+      <button class="btn primary" id="quoteSubmitBtn">ポストする</button>
     </div>
   </div>
 </div>

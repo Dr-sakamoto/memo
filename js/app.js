@@ -70,60 +70,88 @@ function switchView(name) {
 
 // ---------- ポストの描画 ----------
 
+// アクション用のアイコン（線画のインラインSVG。色は currentColor に従う）
+const ICON_PATHS = {
+  quote: "M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 20.5l1.4-5.1A8.5 8.5 0 1 1 21 11.5z",
+  repost: "M7 4 4 7l3 3M4 7h11a4 4 0 0 1 4 4v1M17 20l3-3-3-3M20 17H9a4 4 0 0 1-4-4v-1",
+  context: "M9 6h12M9 12h12M9 18h12M4.5 6h.01M4.5 12h.01M4.5 18h.01",
+  mute: "M3 3l18 18M10.6 5.1Q11.3 5 12 5c5 0 9 4.5 10 7-.4 1-1.2 2.3-2.4 3.5M6.6 6.6C4.4 8 2.8 10.2 2 12c1 2.5 5 7 10 7 1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2",
+  delete: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+};
+
+function icon(name) {
+  return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
+}
+
+function actionBtn(action, id, name, label, count = 0, extra = "") {
+  const countHtml = count ? `<span class="pa-count">${count}</span>` : "";
+  return `<button class="pa-btn pa-${name}${extra}" data-action="${action}" data-id="${id}" title="${label}" aria-label="${label}">${icon(name)}${countHtml}</button>`;
+}
+
 // variant:
-//   "log"  … 記録タブ（再掲・接ぎ木・削除）
-//   "now"  … いま書いた投稿（再掲・接ぎ木・削除）
+//   "log"  … 記録タブ（接ぎ木・再掲・削除）
+//   "now"  … いま書いた投稿（接ぎ木・再掲・削除）
 //   "past" … 流れてきた過去の自分（接ぎ木・再掲・前後を見る・もう流さない）
-function postHtml(post, { variant = "log", grouped = false, isCont = false, when = "" } = {}) {
+// context: 本文の上に出す小さな注記（X の「◯◯さんがリポスト」の位置）
+function postHtml(post, { variant = "log", grouped = false, hasPrev = false, hasNext = false, when = "", context = "" } = {}) {
   const ref = post.refId ? getPost(post.refId) : null;
 
-  let repostNote = "";
   let quoteBlock = "";
-  if (post.type === "repost" && ref) {
-    repostNote = `<div class="repost-note">🔁 過去の自分を再掲</div>`;
-  }
   if (ref && (post.type === "quote" || post.type === "repost")) {
-    quoteBlock = `<blockquote><span class="q-meta">${fmtDateTime(ref.createdAt)}（${fmtAgo(ref.createdAt)}）</span>${renderBody(ref.text)}</blockquote>`;
+    quoteBlock = `
+      <div class="quote-card">
+        <div class="quote-head"><span class="quote-avatar">🍇</span><span class="name">${escapeHtml(fmtAgo(ref.createdAt))}のあなた</span><span class="handle">${fmtDateTime(ref.createdAt)}</span></div>
+        <div class="quote-body">${renderBody(ref.text)}</div>
+      </div>`;
   } else if (post.refId && !ref) {
-    quoteBlock = `<blockquote><span class="q-meta">（削除されたポスト）</span></blockquote>`;
+    quoteBlock = `<div class="quote-card muted">このポストは削除されました</div>`;
   }
+
+  if (post.type === "repost" && !context) context = `${icon("repost")}あなたが再掲しました`;
+  const contextHtml = context ? `<div class="post-context">${context}</div>` : "";
 
   const bodyHtml = post.text ? `<div class="post-body">${renderBody(post.text)}</div>` : "";
 
-  const actions = variant === "past" ? `
-    <div class="post-actions">
-      <button class="pa-btn" data-action="quote" data-id="${post.id}" title="いまの自分を重ねる">🌿 接ぎ木</button>
-      <button class="pa-btn" data-action="repost" data-id="${post.id}" title="いまのタイムラインに再掲する">🔁 再掲</button>
-      <button class="pa-btn" data-action="context" data-id="${post.id}" title="記録で前後を見る">🧵 前後</button>
-      <button class="pa-btn danger" data-action="mute" data-id="${post.id}" title="この投稿をもう流さない">🔕 流さない</button>
-    </div>` : `
-    <div class="post-actions">
-      <button class="pa-btn" data-action="repost" data-id="${post.id}" title="再掲する">🔁 再掲</button>
-      <button class="pa-btn" data-action="quote" data-id="${post.id}" title="引用する">🌿 接ぎ木 ${post.quoteCount ? post.quoteCount : ""}</button>
-      <button class="pa-btn danger" data-action="delete" data-id="${post.id}">削除</button>
-    </div>`;
+  const actions = variant === "past"
+    ? actionBtn("quote", post.id, "quote", "接ぎ木（いまの自分を重ねる）", post.quoteCount) +
+      actionBtn("repost", post.id, "repost", "再掲", post.repostCount) +
+      actionBtn("context", post.id, "context", "記録で前後を見る") +
+      actionBtn("mute", post.id, "mute", "もう流さない", 0, " danger")
+    : actionBtn("quote", post.id, "quote", "接ぎ木（引用）", post.quoteCount) +
+      actionBtn("repost", post.id, "repost", "再掲", post.repostCount) +
+      actionBtn("delete", post.id, "delete", "削除", 0, " danger");
 
-  // 連（スレッド）の一員として描くときは grouped=true。枠・角丸・余白を外し、
-  // 親の .thread ブロックに密着させて「1つのまとまり」に見せる。
-  // isCont（連の先頭＝最古以外）には控えめな「↳」で続きを示す。
-  const threadClass = grouped ? " thread-item" : "";
-  const threadMark = isCont ? `<span class="thread-mark" title="さっきの続き（同じ一息）">↳</span>` : "";
+  const isPast = variant === "past";
+  const anniv = isPast && anniversaryLabel(post);
+  const name = isPast ? `${escapeHtml(when || fmtAgo(post.createdAt))}のあなた` : "あなた";
+  const stamp = isPast ? fmtDateTime(post.createdAt) : fmtAgo(post.createdAt);
+  const mood = post.mood != null ? `<span class="post-mood">${moodEmoji(post.mood)}</span>` : "";
 
-  const pastClass = variant === "past" ? ` past${anniversaryLabel(post) ? " anniv" : ""}` : "";
-  const head = variant === "past"
-    ? `<span class="past-who">${escapeHtml(when || fmtAgo(post.createdAt))}のあなた</span><span>${fmtDateTime(post.createdAt)}</span>`
-    : `${threadMark}<span>${fmtDateTime(post.createdAt)}</span><span>${fmtAgo(post.createdAt)}</span>`;
+  // 連（スレッド）の一員として描くときは grouped=true。hasPrev / hasNext のときは
+  // アバターの上下に前後の投稿へつながる縦線を引き、X のスレッドと同じ見え方にする。
+  const classes = ["post"];
+  if (grouped) classes.push("thread-item");
+  if (hasPrev) classes.push("has-prev");
+  if (hasNext) classes.push("has-next");
+  if (isPast) classes.push("past");
+  if (anniv) classes.push("anniv");
 
   return `
-  <article class="post${threadClass}${pastClass}" data-id="${post.id}">
-    ${repostNote}
-    <div class="post-head">
-      ${head}
-      ${post.mood != null ? `<span class="post-mood">${moodEmoji(post.mood)}</span>` : ""}
+  <article class="${classes.join(" ")}" data-id="${post.id}">
+    ${contextHtml}
+    <div class="post-row">
+      <div class="avatar-col"><div class="avatar" aria-hidden="true">🍇</div></div>
+      <div class="post-main">
+        <div class="post-head">
+          <span class="name">${name}</span>
+          <span class="handle" title="${fmtDateTime(post.createdAt)}">@me · ${stamp}</span>
+          ${mood}
+        </div>
+        ${bodyHtml}
+        ${quoteBlock}
+        <div class="post-actions">${actions}</div>
+      </div>
     </div>
-    ${bodyHtml}
-    ${quoteBlock}
-    ${actions}
   </article>`;
 }
 
@@ -200,19 +228,21 @@ function renderJustPosted() {
     const post = getPost(id);
     if (!post) return "";
     const echoes = echoIds.map(getPost).filter(Boolean);
-    const echoHtml = echoes.length ? `
-      <div class="echo">
-        <p class="echo-label">こだま — 似たことを書いていた過去のあなた</p>
-        ${echoes.map((p) => postHtml(p, { variant: "past" })).join("")}
-      </div>` : "";
-    return postHtml(post, { variant: "now" }) + echoHtml;
+    // こだまは X の返信スレッドのように、いま書いた投稿から縦線でつないで並べる
+    const echoHtml = echoes.map((p, i) => postHtml(p, {
+      variant: "past",
+      hasPrev: true,
+      hasNext: i < echoes.length - 1,
+      context: i === 0 ? "こだま — 似たことを書いていた過去のあなた" : "",
+    })).join("");
+    return `<div class="echo-group">${postHtml(post, { variant: "now", hasNext: echoes.length > 0 })}${echoHtml}</div>`;
   }).join("");
 }
 
 function renderAnniversary() {
   const posts = anniversaryIds.map(getPost).filter(Boolean);
   $("#homeAnniversary").innerHTML = posts.length
-    ? `<p class="section-label">今日の節目</p>` +
+    ? `<h2 class="section-label">今日の節目</h2>` +
       posts.map((p) => postHtml(p, { variant: "past", when: anniversaryLabel(p) })).join("")
     : "";
 }
@@ -238,11 +268,10 @@ function renderFlow() {
     end = `<div class="feed-end">今日は ${count}件の過去と再会した。今日はここまで。
       <button class="link-btn" id="moreFlowBtn">それでも続ける</button></div>`;
   } else {
-    end = `<div class="feed-end">ここまで流れた。
-      <br><button class="btn" id="moreFlowBtn">もう少し流す</button></div>`;
+    end = `<button class="show-more" id="moreFlowBtn">もう少し流す</button>`;
   }
 
-  $("#homeFlow").innerHTML = `<p class="section-label">流れてきた過去のあなた</p>` +
+  $("#homeFlow").innerHTML = `<h2 class="section-label">流れてきた過去のあなた</h2>` +
     posts.map((p) => postHtml(p, { variant: "past" })).join("") + end;
 }
 
@@ -286,7 +315,7 @@ function segmentHtml(seg) {
   const chrono = seg.posts.slice().reverse();
   const inner = [];
   chrono.forEach((post, k) => {
-    inner.push(postHtml(post, { grouped: true, isCont: k > 0 }));
+    inner.push(postHtml(post, { grouped: true, hasPrev: k > 0, hasNext: k < chrono.length - 1 }));
     if (k < chrono.length - 1) {
       // 直下の（一つ新しい）投稿との継ぎ目。切り離しは継続側（新しい方）で行う。
       const newer = chrono[k + 1];
