@@ -1,7 +1,7 @@
 // アプリシェルのオフラインキャッシュ。データはlocalStorageのみで、SWはUIの資産だけを扱う。
 // 更新手順: デプロイでシェルの中身を変えたら CACHE_VERSION を上げること。
 // 上げないとブラウザがsw.js自体の変更を検知できず、古いキャッシュが延々と配信され続ける。
-const CACHE_VERSION = "v11";
+const CACHE_VERSION = "v12";
 const CACHE_NAME = `memo-shell-${CACHE_VERSION}`;
 
 const SHELL_ASSETS = [
@@ -9,22 +9,15 @@ const SHELL_ASSETS = [
   "./index.html",
   "./css/style.css",
   "./js/app.js",
-  "./js/ai.js",
-  "./js/mass.js",
-  "./js/report.js",
+  "./js/flow.js",
   "./js/store.js",
   "./js/sync.js",
-  "./js/vine.js",
-  "./js/workflow.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/apple-touch-icon.png",
 ];
-
-// api呼び出しは絶対にキャッシュしない（レスポンスは毎回ネットワークから素通し）
-const API_HOSTS = ["api.anthropic.com", "generativelanguage.googleapis.com"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -73,8 +66,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-  if (API_HOSTS.includes(url.hostname)) return; // 素通し。respondWithしないのでブラウザが直接ネットワークへ
-  // クラウド同期（Supabase）も絶対にキャッシュしない。常に最新をネットワークから取得する。
+  // クラウド同期（Supabase）は絶対にキャッシュしない。respondWithしないのでブラウザが直接ネットワークへ。
   if (url.hostname.endsWith(".supabase.co")) return;
 
   event.respondWith(cacheFirst(request));

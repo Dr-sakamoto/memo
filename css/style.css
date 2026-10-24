@@ -49,59 +49,6 @@ body {
 }
 .logo { font-size: 1.15rem; margin: 0; letter-spacing: .02em; }
 .logo-sub { font-size: .65rem; color: var(--muted); font-weight: normal; margin-left: .5em; letter-spacing: .15em; }
-.vine-badge { font-size: .8rem; color: var(--grape); white-space: nowrap; }
-
-/* ---------- ticker ---------- */
-.ticker-wrap {
-  display: flex;
-  align-items: stretch;
-  background: var(--bg-soft);
-  border-bottom: 1px solid var(--line);
-  height: 46px;
-  overflow: hidden;
-}
-.ticker-label {
-  flex: none;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  font-size: .75rem;
-  color: var(--grape);
-  background: var(--card-2);
-  border-right: 1px solid var(--line);
-  letter-spacing: .1em;
-  white-space: nowrap;
-}
-.ticker-viewport { flex: 1; overflow: hidden; position: relative; }
-.ticker-track {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  height: 100%;
-  white-space: nowrap;
-  will-change: transform;
-  animation: ticker-scroll linear infinite;
-}
-@keyframes ticker-scroll {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
-}
-.ticker-item {
-  color: var(--text);
-  font-size: .95rem;
-  padding: 0 2.5em;
-  cursor: pointer;
-}
-.ticker-item .t-when { color: var(--muted); font-size: .78rem; margin-right: .6em; }
-.ticker-item:hover { color: var(--accent); }
-.ticker-locked {
-  background: var(--bg-soft);
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-  font-size: .75rem;
-  text-align: center;
-  padding: 6px 12px;
-}
 
 /* ---------- tabs ---------- */
 .tabs {
@@ -182,32 +129,9 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 
 /* ---------- composer ---------- */
 .composer textarea { resize: vertical; min-height: 70px; }
-.composer-kinds { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-.kind-chip {
-  border: 1px solid var(--line);
-  background: none;
-  color: var(--muted);
-  border-radius: 999px;
-  padding: 3px 12px;
-  font-size: .78rem;
-  cursor: pointer;
-}
-.kind-chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
 .composer-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
 .composer-actions { display: flex; align-items: center; gap: 10px; }
 .char-count { color: var(--muted); font-size: .75rem; }
-
-.mood-picker { display: flex; gap: 4px; }
-.mood-btn {
-  background: none;
-  border: 1px solid transparent;
-  font-size: 1.05rem;
-  cursor: pointer;
-  border-radius: 6px;
-  padding: 2px 4px;
-  filter: grayscale(1) opacity(.55);
-}
-.mood-btn.active { filter: none; border-color: var(--accent); background: var(--accent-soft); }
 
 /* ---------- feed / posts ---------- */
 .post {
@@ -218,13 +142,6 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
   margin-bottom: 10px;
 }
 .post-head { display: flex; align-items: center; gap: 8px; font-size: .75rem; color: var(--muted); flex-wrap: wrap; }
-.post-kind {
-  border-radius: 999px;
-  padding: 1px 9px;
-  font-size: .7rem;
-  background: var(--accent-soft);
-  color: var(--grape);
-}
 /* ===== 連（スレッド）＝「同じ一息」のまとまり =====
    連に属する投稿は、間を空けずにピタッと束ね、1つのカード（.thread）に包む。
    投稿どうしの継ぎ目は薄い区切り線だけにして「1つのまとまり」に見せ、
@@ -288,35 +205,6 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
   background: repeating-linear-gradient(90deg, var(--danger) 0 5px, transparent 5px 10px);
 }
 
-/* コンポーザーの連ヒント（続きになる／新しい連にする） */
-.thread-hint {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  margin-top: 8px;
-  padding: 6px 10px;
-  background: var(--bg-soft);
-  border-radius: 8px;
-  font-size: .78rem;
-  color: var(--muted);
-}
-.thread-hint-icon { font-size: .9rem; }
-.thread-toggle { display: flex; gap: 6px; margin-left: auto; }
-.thread-toggle-btn {
-  background: var(--card);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: .74rem;
-  padding: 3px 9px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-.thread-toggle-btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
 .post-body { margin: 8px 0 6px; white-space: pre-wrap; word-break: break-word; }
 .post-body .tag { color: var(--accent); }
 .tag[data-tag] { cursor: pointer; }
@@ -346,17 +234,6 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .pa-btn.danger:hover { color: var(--danger); }
 .post-mood { font-size: .9rem; }
 
-.ai-reply {
-  margin-top: 10px;
-  border-top: 1px dashed var(--line);
-  padding-top: 8px;
-  font-size: .85rem;
-  color: var(--grape);
-  display: flex;
-  gap: 8px;
-}
-.ai-reply .ai-icon { flex: none; }
-
 .feed-empty { text-align: center; color: var(--muted); padding: 40px 10px; font-size: .9rem; }
 
 /* ---------- 絞り込みバー ---------- */
@@ -381,54 +258,7 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .btn.small { padding: 5px 10px; font-size: .78rem; }
 .load-more-btn { display: block; width: 100%; margin-top: 4px; }
 
-/* ---------- timeaxis ---------- */
-.axis-section h3 {
-  font-size: .9rem;
-  color: var(--grape);
-  margin: 20px 4px 8px;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.axis-section h3 .axis-date { color: var(--muted); font-size: .75rem; font-weight: normal; }
-.axis-empty { color: var(--muted); font-size: .8rem; margin: 0 4px 4px; }
-
-/* ---------- vine ---------- */
-.vine-card { text-align: center; }
-#vineSvgWrap svg { max-width: 100%; height: auto; }
-.vine-info { text-align: left; margin-top: 10px; }
-.vine-stage-name { font-size: 1.1rem; color: var(--grape); }
-.vine-progress-bar {
-  height: 8px;
-  background: var(--bg-soft);
-  border-radius: 999px;
-  overflow: hidden;
-  margin: 8px 0;
-}
-.vine-progress-fill { height: 100%; background: linear-gradient(90deg, var(--leaf), var(--grape)); }
-.vine-stats { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 10px; font-size: .82rem; color: var(--muted); }
-.vine-stats b { color: var(--text); }
-
-/* ---------- analysis ---------- */
-#moodChart svg { width: 100%; height: auto; }
-.stat-line { font-size: .85rem; margin: 4px 0; }
-.stat-line b { color: var(--grape); }
-.ai-controls { display: flex; gap: 10px; margin: 10px 0; }
-.ai-controls select { width: auto; }
-.ai-result {
-  white-space: pre-wrap;
-  font-size: .88rem;
-  background: var(--bg-soft);
-  border-radius: 8px;
-  padding: 0;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-.ai-result:not(:empty) { padding: 12px 14px; margin-top: 8px; }
-.spin { display: inline-block; animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ---- ティッカーから引用→連ジャンプしたときのハイライト ---- */
+/* ---- 「前後を見る」で記録へジャンプしたときのハイライト ---- */
 .thread-highlight {
   animation: thread-highlight-pulse 2s ease;
 }
@@ -452,136 +282,6 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .modal { width: 100%; max-width: 520px; }
 .modal h3 { margin-top: 0; font-size: .95rem; color: var(--grape); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
-
-/* ---------- pending banner ---------- */
-.pending-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent);
-  border-radius: 10px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  font-size: .82rem;
-}
-.pending-banner span { flex: 1; }
-.btn.small { padding: 4px 10px; font-size: .75rem; white-space: nowrap; }
-
-/* ---------- report ---------- */
-.report-card { border-color: var(--accent-soft); }
-/* ロールアップ（四半期・年次）は週・月の一次観測とは階層が違うので視覚的に区別する */
-.report-card-rollup { border-color: var(--grape); border-width: 2px; }
-.report-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-.report-period { color: var(--grape); font-size: .9rem; font-weight: bold; }
-.report-mood { color: var(--muted); font-size: .8rem; }
-.report-letter { white-space: pre-wrap; font-size: .9rem; }
-
-/* 前回の一手の追跡と持ち越し宿題（schemaVersion 2〜）。畳まずに手紙と同じ階層で見せる */
-.report-followup {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-  padding: 6px 10px;
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-.fu-badge { font-size: .78rem; font-weight: bold; white-space: nowrap; }
-.fu-done { color: var(--leaf); }
-.fu-partial { color: var(--mood-p2); }
-.fu-notdone { color: var(--danger); }
-.fu-unknown { color: var(--muted); }
-.fu-evidence { font-size: .8rem; color: var(--muted); flex: 1; min-width: 0; }
-.report-loops {
-  margin-top: 10px;
-  padding: 8px 10px;
-  background: var(--card-2);
-  border-radius: 10px;
-}
-.loops-head { font-size: .78rem; font-weight: bold; color: var(--grape); margin-bottom: 4px; }
-.loops-list { margin: 0; padding-left: 18px; font-size: .82rem; }
-.loops-list li { margin: 3px 0; }
-.loop-label { font-weight: bold; }
-.loop-note { color: var(--muted); margin-left: 6px; font-size: .78rem; }
-.follow-rate { font-size: 1.4rem; font-weight: bold; color: var(--grape); margin: 2px 0 6px; }
-
-/* 盲点への応答（一方通行にしない装置）。手紙と同じ階層に置き、details に畳まない */
-.report-blindspot {
-  margin: 10px 0;
-  padding: 8px 10px;
-  background: var(--bg-soft);
-  border-left: 3px solid var(--grape);
-  border-radius: 4px 10px 10px 4px;
-}
-.report-blindspot h4 { font-size: .8rem; color: var(--grape); margin: 8px 0 4px; }
-.report-blindspot h4:first-child { margin-top: 0; }
-.report-blindspot > p { margin: 4px 0; font-size: .88rem; }
-.blindspot-feedback { margin-top: 8px; }
-.fb-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
-.fb-btn {
-  background: var(--card-2);
-  border: 1px solid var(--line);
-  color: var(--text);
-  font-size: .78rem;
-  cursor: pointer;
-  padding: 4px 10px;
-  border-radius: 999px;
-}
-.fb-btn:hover { border-color: var(--grape); }
-.fb-btn.active { background: var(--grape); border-color: var(--grape); color: #fff; }
-.fb-note {
-  width: 100%;
-  margin-top: 6px;
-  font-size: .82rem;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--text);
-  resize: vertical;
-}
-.fb-existing { font-size: .82rem; margin: 6px 0 0; }
-.mood-gap-warn { font-size: .85rem; color: var(--grape); font-weight: bold; margin: 6px 0 0; }
-.blindspot-repeat-warn {
-  font-size: .85rem;
-  font-weight: bold;
-  color: var(--danger);
-  background: var(--bg-soft);
-  border-left: 3px solid var(--danger);
-  border-radius: 4px 10px 10px 4px;
-  padding: 6px 10px;
-  margin: 6px 0;
-}
-.report-details { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
-.report-details summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
-.report-details summary:hover { color: var(--text); }
-.report-details h4 { font-size: .8rem; color: var(--grape); margin: 12px 0 4px; }
-.report-details p { margin: 4px 0; font-size: .85rem; }
-.report-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.theme-row { margin: 6px 0; font-size: .85rem; }
-.theme-name { font-weight: bold; }
-.theme-weight { color: var(--grape); font-size: .75rem; margin-left: 8px; }
-.theme-summary { color: var(--muted); font-size: .8rem; }
-.emotion-chip {
-  display: inline-block;
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 10px;
-  font-size: .78rem;
-  margin: 2px 2px 2px 0;
-}
-#metaChart svg { width: 100%; height: auto; }
 
 @media (max-width: 480px) {
   :root { font-size: 14px; }
@@ -669,4 +369,54 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 @keyframes sync-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+/* ---- 折りたたみ ---- */
+.fold { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.fold summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+.fold summary:hover { color: var(--text); }
+
+/* ---------- ホーム：流れ ---------- */
+.composer-footer { justify-content: flex-end; gap: 10px; }
+.section-label {
+  font-size: .78rem;
+  color: var(--grape);
+  letter-spacing: .08em;
+  margin: 18px 4px 8px;
+}
+/* 過去の自分のポスト。いまの投稿と見分けがつくよう、左に細い色帯を置く */
+.post.past { border-left: 4px solid var(--accent-soft); }
+.post.past.anniv { border-left-color: var(--accent); }
+.past-who { color: var(--grape); font-weight: 600; }
+
+/* こだま：書いた直後に返ってくる、似たことを書いていた過去の自分 */
+.echo {
+  margin: -4px 0 12px 14px;
+  padding-left: 12px;
+  border-left: 2px dashed var(--line);
+}
+.echo-label { font-size: .75rem; color: var(--muted); margin: 0 0 6px; }
+.echo .post { margin-bottom: 6px; padding: 8px 12px; font-size: .92rem; }
+
+/* 止めどきの合図 */
+.feed-end {
+  text-align: center;
+  color: var(--muted);
+  font-size: .85rem;
+  padding: 24px 10px 8px;
+}
+.feed-end .btn { margin-top: 10px; }
+.link-btn {
+  display: block;
+  margin: 10px auto 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: .75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
