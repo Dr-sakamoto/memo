@@ -2,7 +2,6 @@ import {
   MOODS,
   getPosts, getPost, getSettings, saveSettings,
   addPost, deletePost, setAiReply,
-  breakThreadLink,
   getReports, deleteReport, setReportFeedback,
   activeDays, daysSinceFirstPost,
   exportJson, importJson, wipeAll,
@@ -16,7 +15,7 @@ import { milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
 import { stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
 import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, currentModelLabel } from "./ai.js";
 import { initHub, renderHub } from "./hub-ui.js";
-import { sourceMeta, wipeExternal, onHubChange, getHubSettings } from "./hub.js";
+import { wipeExternal, onHubChange, getHubSettings, ownExternalAsPosts, getExternalById, sourceMeta } from "./hub.js";
 import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, themeLifecycles, recurringBlindSpots, suggestionFollowThrough, selfReportedMoodByPeriod } from "./report.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -95,45 +94,15 @@ $("#composerText").addEventListener("input", () => {
   $("#charCount").textContent = len > 0 ? `${len}字` : "";
 });
 
-$("#composerText").addEventListener("focus", updateThreadHint);
-
-// 連（スレッド）: 直前の投稿から閾値分以内なら「続き」になる。自動が既定だが、
-// 別の話題を書き始めるときは手で切れるようにする（判断コストは基本ゼロ）。
-let breakNextThread = false;
-
-function updateThreadHint() {
-  const hint = $("#threadHint");
-  const latest = getPosts()[0];
-  const windowMin = getSettings().threadWindowMin ?? 5;
-  const within = latest && latest.type === "post" &&
-    (Date.now() - new Date(latest.createdAt).getTime()) / 60000 <= windowMin;
-  if (!within) { hint.hidden = true; breakNextThread = false; return; }
-  hint.hidden = false;
-  $("#threadHintIcon").textContent = breakNextThread ? "🌿" : "↳";
-  $("#threadHintText").textContent = breakNextThread ? "新しい連として始めます" : "さっきの続きになります";
-  $$("#threadToggle .thread-toggle-btn").forEach((b) => {
-    b.classList.toggle("active", (b.dataset.mode === "break") === breakNextThread);
-  });
-}
-
-$("#threadToggle").addEventListener("click", (e) => {
-  const btn = e.target.closest(".thread-toggle-btn");
-  if (!btn) return;
-  breakNextThread = btn.dataset.mode === "break";
-  updateThreadHint();
-});
-
 $("#postBtn").addEventListener("click", () => {
   const text = $("#composerText").value.trim();
   if (!text) return;
-  const post = addPost({ text, mood: selectedMood, standalone: breakNextThread });
+  const post = addPost({ text, mood: selectedMood });
   $("#composerText").value = "";
   $("#charCount").textContent = "";
   selectedMood = null;
-  breakNextThread = false;
   renderMoodPicker();
   renderFeed();
-  updateThreadHint();
   updateVineBadge();
   updateTicker();
   maybeAutoReply(post);
@@ -153,19 +122,13 @@ async function maybeAutoReply(post) {
 
 // ---------- フィード ----------
 
-function postHtml(post, { showActions = true, grouped = false, isCont = false } = {}) {
-  const ref = post.refId ? getPost(post.refId) : null;
-
-  let repostNote = "";
-  let quoteBlock = "";
-  if (post.type === "repost" && ref) {
-    repostNote = `<div class="repost-note">🔁 過去の自分を再掲（再芽）</div>`;
-  }
-  if (ref && (post.type === "quote" || post.type === "repost")) {
-    quoteBlock = `<blockquote><span class="q-meta">${fmtDateTime(ref.createdAt)}（${fmtAgo(ref.createdAt)}）</span>${renderBody(ref.text)}</blockquote>`;
-  } else if (post.refId && !ref) {
-    quoteBlock = `<blockquote><span class="q-meta">（削除されたポスト）</span></blockquote>`;
-  }
+// つぶやきは1件ずつ独立して一本の流れに並べる（連・接ぎ木・再芽はなし）。
+// 過去に作った引用ポストだけは、文脈が失われないよう引用元を読み取り専用で添える。
+function postHtml(post, { showActions = true } = {}) {
+  const ref = post.type === "quote" && post.refId ? getPost(post.refId) : null;
+  const quoteBlock = ref
+    ? `<blockquote><span class="q-meta">${fmtDateTime(ref.createdAt)}（${fmtAgo(ref.createdAt)}）</span>${renderBody(ref.text)}</blockquote>`
+    : "";
 
   const bodyHtml = post.text ? `<div class="post-body">${renderBody(post.text)}</div>` : "";
   const aiReplyHtml = post.aiReply
@@ -174,23 +137,13 @@ function postHtml(post, { showActions = true, grouped = false, isCont = false } 
 
   const actions = showActions ? `
     <div class="post-actions">
-      <button class="pa-btn" data-action="repost" data-id="${post.id}" title="再掲する">🔁 再芽</button>
-      <button class="pa-btn" data-action="quote" data-id="${post.id}" title="引用する">🌿 接ぎ木 ${post.quoteCount ? post.quoteCount : ""}</button>
       <button class="pa-btn" data-action="ai" data-id="${post.id}" title="AIに返信をもらう">🤖 AIの目</button>
       <button class="pa-btn danger" data-action="delete" data-id="${post.id}">削除</button>
     </div>` : "";
 
-  // 連（スレッド）の一員として描くときは grouped=true。枠・角丸・余白を外し、
-  // 親の .thread ブロックに密着させて「1つのまとまり」に見せる。
-  // isCont（連の先頭＝最古以外）には控えめな「↳」で続きを示す。
-  const threadClass = grouped ? " thread-item" : "";
-  const threadMark = isCont ? `<span class="thread-mark" title="さっきの続き（同じ一息）">↳</span>` : "";
-
   return `
-  <article class="post${threadClass}" data-id="${post.id}">
-    ${repostNote}
+  <article class="post" data-id="${post.id}">
     <div class="post-head">
-      ${threadMark}
       <span>${fmtDateTime(post.createdAt)}</span>
       <span>${fmtAgo(post.createdAt)}</span>
       ${post.mood != null ? `<span class="post-mood">${moodEmoji(post.mood)}</span>` : ""}
@@ -200,45 +153,6 @@ function postHtml(post, { showActions = true, grouped = false, isCont = false } 
     ${aiReplyHtml}
     ${actions}
   </article>`;
-}
-
-// タイムライン全体は新しい順。ただし「連（スレッド）＝連続投稿の一息の塊」は、
-// その内部だけ時系列順（古い→新しい＝上→下）に並べ替え、1つの .thread ブロックに
-// まとめて描く。連は書いた順に上から読めるようにし、連と連の間は従来どおり新しい順
-// を保つ（＝下に行くほど過去）。posts（新しい順）を「単独ポスト」または「連のまとまり」
-// のセグメント列に分ける。絞り込み・ページングの境界はこのセグメント単位で揃える
-// （連の途中では切らない）。
-function buildSegments(posts) {
-  const segments = [];
-  let i = 0;
-  while (i < posts.length) {
-    const p = posts[i];
-    if (!p.threadId) { segments.push({ type: "single", post: p }); i++; continue; }
-    let j = i;
-    while (j + 1 < posts.length && posts[j + 1].threadId === p.threadId) j++;
-    segments.push({ type: "thread", posts: posts.slice(i, j + 1) });
-    i = j + 1;
-  }
-  return segments;
-}
-
-function segmentHtml(seg) {
-  if (seg.type === "single") return postHtml(seg.post);
-  // 連の内部は古い順に反転して、頭（起点）を上・続きを下にして並べる。
-  const chrono = seg.posts.slice().reverse();
-  const inner = [];
-  chrono.forEach((post, k) => {
-    inner.push(postHtml(post, { grouped: true, isCont: k > 0 }));
-    if (k < chrono.length - 1) {
-      // 直下の（一つ新しい）投稿との継ぎ目。切り離しは継続側（新しい方）で行う。
-      const newer = chrono[k + 1];
-      inner.push(`
-      <div class="thread-seam">
-        <button class="thread-cut-btn" data-action="cut-thread" data-id="${newer.id}" title="ここで連を切り離す" aria-label="ここで連を切り離す">✂️</button>
-      </div>`);
-    }
-  });
-  return `<div class="thread">${inner.join("")}</div>`;
 }
 
 // ---------- 絞り込み（検索・タグ・気分・期間） ----------
@@ -340,7 +254,7 @@ document.body.addEventListener("click", (e) => {
   renderFeed();
 });
 
-// もっと読む（ページング。連の途中では切らない）
+// もっと読む（ページング）
 document.body.addEventListener("click", (e) => {
   const btn = e.target.closest("#loadMoreBtn");
   if (!btn) return;
@@ -348,8 +262,13 @@ document.body.addEventListener("click", (e) => {
   renderFeed();
 });
 
+// 旧データの再芽（本文なしの再掲）は一本の流れには出さない（データは保持）
+function feedPosts() {
+  return getPosts().filter((p) => p.type !== "repost");
+}
+
 function renderFeed() {
-  const allPosts = getPosts();
+  const allPosts = feedPosts();
   const active = isFilterActive();
   const posts = active ? allPosts.filter(matchesFilter) : allPosts;
   renderFilterBar(allPosts, posts.length);
@@ -363,30 +282,11 @@ function renderFeed() {
     return;
   }
 
-  const segments = buildSegments(posts);
-
-  // ページング境界を連（threadId）のまとまりに合わせて揃える。
-  let count = 0;
-  let cut = segments.length;
-  for (let s = 0; s < segments.length; s++) {
-    if (count >= feedVisibleCount) { cut = s; break; }
-    count += segments[s].type === "thread" ? segments[s].posts.length : 1;
-  }
-  const visible = segments.slice(0, cut);
-  const hasMore = cut < segments.length;
-
-  const parts = visible.map(segmentHtml);
-  if (hasMore) parts.push(`<button class="btn load-more-btn" id="loadMoreBtn">もっと読む</button>`);
+  const visible = posts.slice(0, feedVisibleCount);
+  const parts = visible.map((p) => postHtml(p));
+  if (posts.length > visible.length) parts.push(`<button class="btn load-more-btn" id="loadMoreBtn">もっと読む</button>`);
   $("#feed").innerHTML = parts.join("");
 }
-
-// 連（スレッド）を手動で切り離す
-document.body.addEventListener("click", (e) => {
-  const btn = e.target.closest(".thread-cut-btn");
-  if (!btn) return;
-  breakThreadLink(btn.dataset.id);
-  renderFeed();
-});
 
 // フィード内アクション（イベント委譲）
 document.body.addEventListener("click", async (e) => {
@@ -395,16 +295,6 @@ document.body.addEventListener("click", async (e) => {
   const { action, id } = btn.dataset;
   const post = getPost(id);
   if (!post) return;
-
-  if (action === "repost") {
-    addPost({ text: "", type: "repost", refId: post.id });
-    renderFeed();
-    updateVineBadge();
-  }
-
-  if (action === "quote") {
-    openQuoteModal(post);
-  }
 
   if (action === "delete") {
     if (confirm("このポストを削除しますか？")) {
@@ -433,47 +323,25 @@ document.body.addEventListener("click", async (e) => {
   }
 });
 
-// ---------- 引用モーダル ----------
-
-let quoteTargetId = null;
-
-function openQuoteModal(post) {
-  quoteTargetId = post.id;
-  $("#quoteTarget").innerHTML = `<span class="q-meta">${fmtDateTime(post.createdAt)}（${fmtAgo(post.createdAt)}）</span>${renderBody(post.text)}`;
-  $("#quoteText").value = "";
-  $("#quoteModal").hidden = false;
-  $("#quoteText").focus();
-}
-
-$("#quoteCancelBtn").addEventListener("click", () => { $("#quoteModal").hidden = true; });
-$("#quoteModal").addEventListener("click", (e) => {
-  if (e.target === $("#quoteModal")) $("#quoteModal").hidden = true;
-});
-$("#quoteSubmitBtn").addEventListener("click", () => {
-  const text = $("#quoteText").value.trim();
-  if (!text || !quoteTargetId) return;
-  addPost({ text, type: "quote", refId: quoteTargetId });
-  $("#quoteModal").hidden = true;
-  renderFeed();
-  updateVineBadge();
-  updateTicker();
-});
-
-// 引用対象がどの連（スレッド）にいたかをタイムラインで確認できるようにする
-$("#quoteViewThreadBtn").addEventListener("click", () => {
-  if (quoteTargetId) viewPostInTimeline(quoteTargetId);
-});
-
+// 過去のつぶやきへ飛ぶ。絞り込みやページングで隠れていても表示されるようにする。
 function viewPostInTimeline(postId) {
-  $("#quoteModal").hidden = true;
   switchView("timeline");
+  const idx = feedPosts().findIndex((p) => p.id === postId);
+  if (idx === -1) return;
+  if (isFilterActive()) {
+    feedFilter = { text: "", moods: new Set(), from: "", to: "", tag: null };
+    $("#filterText").value = "";
+    $("#filterFrom").value = "";
+    $("#filterTo").value = "";
+  }
+  if (idx >= feedVisibleCount) feedVisibleCount = Math.ceil((idx + 1) / FEED_PAGE_SIZE) * FEED_PAGE_SIZE;
+  renderFeed();
   requestAnimationFrame(() => {
     const el = document.querySelector(`.post[data-id="${postId}"]`);
     if (!el) return;
-    const container = el.closest(".thread") || el;
-    container.scrollIntoView({ behavior: "smooth", block: "center" });
-    container.classList.add("thread-highlight");
-    setTimeout(() => container.classList.remove("thread-highlight"), 2000);
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("post-highlight");
+    setTimeout(() => el.classList.remove("post-highlight"), 2000);
   });
 }
 
@@ -504,7 +372,9 @@ function updateTicker(forceRefresh = false) {
   const alreadyShowing = !$("#tickerWrap").hidden && tickerRenderedIds;
   if (alreadyShowing && !forceRefresh) return;
 
-  const picked = pickForTicker(posts, 12);
+  // 一本化した流れ（MEMOの雑記＋外部SNSの自分の投稿）から抽選する
+  const pool = posts.filter((p) => p.text && p.type !== "repost").concat(ownExternalAsPosts());
+  const picked = pickForTicker(pool, 12);
   if (picked.length === 0) {
     $("#tickerWrap").hidden = true;
     $("#tickerLocked").hidden = false;
@@ -521,7 +391,8 @@ function updateTicker(forceRefresh = false) {
     const { label } = milestoneBonus(p);
     const when = label || fmtAgo(p.createdAt);
     const text = p.text.length > 60 ? p.text.slice(0, 60) + "…" : p.text;
-    return `<span class="ticker-item" data-id="${p.id}"><span class="t-when">${when}の自分</span>${escapeHtml(text)}</span>`;
+    const src = p.source && p.source !== "memo" ? `${sourceMeta(p.source).label}の` : "";
+    return `<span class="ticker-item" data-id="${escapeHtml(p.id)}"><span class="t-when">${when}の${src}自分</span>${escapeHtml(text)}</span>`;
   }).join("");
 
   // シームレスにループさせるため2周分並べる
@@ -538,12 +409,14 @@ function updateTicker(forceRefresh = false) {
 // しばらく経ったら中身を入れ替える（流れている最中には割り込まない）
 setInterval(() => updateTicker(true), 90000);
 
-// ティッカーのポストをクリック → 引用モーダル（過去の自分に接ぎ木する）
+// ティッカーのポストをクリック → その日の流れへ飛ぶ（外部SNSの投稿は元のページを開く）
 $("#tickerTrack").addEventListener("click", (e) => {
   const item = e.target.closest(".ticker-item");
   if (!item) return;
-  const post = getPost(item.dataset.id);
-  if (post) openQuoteModal(post);
+  const id = item.dataset.id;
+  if (getPost(id)) { viewPostInTimeline(id); return; }
+  const ext = getExternalById(id);
+  if (ext?.url) window.open(ext.url, "_blank", "noopener");
 });
 
 // ---------- レポート未作成バナー ----------
@@ -592,7 +465,7 @@ function renderVine() {
   const posts = getPosts();
   const stage = stageOf(days);
   const next = nextStage(days);
-  const bunches = bunchCount(posts);
+  const bunches = bunchCount(getReports());
 
   $("#vineSvgWrap").innerHTML = renderVineSvg(days, posts.length, bunches);
 
@@ -604,7 +477,7 @@ function renderVine() {
       <div class="vine-progress-bar"><div class="vine-progress-fill" style="width:${pct}%"></div></div>
       <div class="muted">次の段階「${next.emoji} ${next.name}」まで、あと${next.minDays - days}日の活動</div>`;
   } else {
-    progressHtml = `<div class="muted">木は成熟しました。それでも、刻むたびに房は増えていく。</div>`;
+    progressHtml = `<div class="muted">木は成熟しました。それでも、流れを醸すたびに房は増えていく。</div>`;
   }
 
   $("#vineInfo").innerHTML = `
@@ -613,7 +486,7 @@ function renderVine() {
     <div class="vine-stats">
       <span>活動日数 <b>${days}日</b></span>
       <span>ポスト <b>${posts.length}件</b></span>
-      <span>房（引用された記録） <b>${bunches}</b></span>
+      <span>房（醸造したレポート） <b>${bunches}</b></span>
       <span>初日から <b>${daysSinceFirstPost()}日</b></span>
     </div>`;
 }
@@ -779,7 +652,7 @@ function reportCardHtml(r) {
     `<span class="emotion-chip">${escapeHtml(e.label)} ${"●".repeat(Math.max(1, Math.min(5, e.intensity)))}</span>`
   ).join(" ");
   const reread = (d.reread_post_ids || [])
-    .map((id) => getPost(id))
+    .map((id) => getPost(id) || getExternalById(id))
     .filter(Boolean)
     .map((p) => `<blockquote><span class="q-meta">${fmtDateTime(p.createdAt)}</span>${renderBody(p.text)}</blockquote>`)
     .join("");
@@ -1291,7 +1164,10 @@ $("#syncAutoToggle").addEventListener("change", (e) => {
 // データ変更のたびに自動プッシュ（デバウンス）
 onMutation(() => scheduleAutoPush());
 // 統合ハブの取り込み・設定変更も、外部投稿の同期がONなら自動プッシュ（同期由来の反映は除く）
-onHubChange((meta) => { if (!meta?.remote && getHubSettings().syncExternal) scheduleAutoPush(); });
+onHubChange((meta) => {
+  if (!meta?.remote && getHubSettings().syncExternal) scheduleAutoPush();
+  updatePendingBanner(); // 外部の自分の投稿も醸造の材料なので、未作成レポートの判定が変わりうる
+});
 
 // ---------- 初期化 ----------
 
@@ -1302,29 +1178,13 @@ function renderAll() {
   renderSyncUI();
   updateVineBadge();
   updateTicker();
-  updateThreadHint();
   updatePendingBanner();
   if (!$("#view-hub").hidden) renderHub();
 }
 
 renderAll();
 
-// 統合ハブ: 外部SNSの投稿を「接ぎ木」するときは、コンポーザーに引用を差し込んでタイムラインへ。
-// 外部投稿はMEMOの雑記ストアに入れない（成長・連・レポートを汚さない）ので、refIdではなく本文引用にする。
-initHub({
-  onQuoteToMemo: (it) => {
-    const m = sourceMeta(it.source);
-    const head = `${m.label}${it.author ? " @" + it.author : ""} ${fmtDateTime(it.createdAt)}`;
-    const quoted = it.text.split("\n").map((l) => "> " + l).join("\n");
-    const box = $("#composerText");
-    box.value = `${quoted}\n— ${head}${it.url ? " " + it.url : ""}\n\n`;
-    switchView("timeline");
-    box.focus();
-    box.setSelectionRange(box.value.length, box.value.length);
-    box.dispatchEvent(new Event("input"));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  },
-});
+initHub();
 
 // クラウド同期の起動（設定済みかつログイン済みなら初回同期）
 initSync({

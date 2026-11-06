@@ -52,15 +52,7 @@
       <button class="btn small primary" id="pendingBannerGo">レポートを見る</button>
     </div>
     <div class="composer card">
-      <textarea id="composerText" rows="3" placeholder="いま、なにを考えている？（雑記でいい。分類は他者＝AIの仕事）"></textarea>
-      <div class="thread-hint" id="threadHint" hidden>
-        <span class="thread-hint-icon" id="threadHintIcon"></span>
-        <span id="threadHintText"></span>
-        <div class="thread-toggle" id="threadToggle" role="group" aria-label="連の設定">
-          <button type="button" class="thread-toggle-btn" data-mode="cont">↳ 続きにする</button>
-          <button type="button" class="thread-toggle-btn" data-mode="break">🌿 新しい連にする</button>
-        </div>
-      </div>
+      <textarea id="composerText" rows="3" placeholder="いま、なにを考えている？（雑記でいい。つなげるのも分類するのも、醸造＝AIの仕事）"></textarea>
       <div class="composer-footer">
         <div class="mood-picker" id="moodPicker" title="いまの気分（任意）"></div>
         <div class="composer-actions">
@@ -90,7 +82,7 @@
 
   <!-- ===== 統合ハブ（X / 755 などの外部SNS + MEMO） ===== -->
   <section class="view" id="view-hub" hidden>
-    <p class="view-desc">X・755など外のSNSに書いたものと、ここ（MEMO）の雑記を1本のタイムラインに。横断して閲覧・分析・抽出する。外部の投稿は取り込み専用で、元のSNSには何も書き込みません。</p>
+    <p class="view-desc">X・755など外のSNSに書いたものと、ここ（MEMO）の雑記を一本の流れに。横断して閲覧・分析・抽出し、自分の投稿はレポート（醸造）の材料にもなる。外部の投稿は取り込み専用で、元のSNSには何も書き込みません。</p>
 
     <details class="card" id="hubImportCard">
       <summary><b>📥 取り込み</b> <span class="muted" id="hubExtStatus"></span></summary>
@@ -104,6 +96,10 @@
         <label class="field"><span>𝕏 X のユーザー名</span><input type="text" id="hubHandleX" placeholder="your_handle"></label>
         <label class="field"><span>7️⃣ 755 のユーザー名/トークID</span><input type="text" id="hubHandle755" placeholder="your_talk"></label>
       </div>
+      <label class="field checkbox">
+        <input type="checkbox" id="hubBrewExternal">
+        <span>外部SNSの「自分の投稿」も、レポート（醸造）と電光掲示板に混ぜる</span>
+      </label>
       <label class="field checkbox">
         <input type="checkbox" id="hubSyncExternal">
         <span>取り込んだ外部投稿もクラウド同期する（ログイン時のみ・件数が多いと同期が重くなります）</span>
@@ -168,7 +164,7 @@
 
   <!-- ===== レポート ===== -->
   <section class="view" id="view-report" hidden>
-    <p class="view-desc">雑記はそのままに、AI＝唯一の他者が週・月の単位で構造的に解釈する。毎回同じ分析フォーマットで蓄積され、時間をまたいだ自己のメタ分析になる。</p>
+    <p class="view-desc">つぶやきは一本の流れに溜めるだけ。それをAI＝唯一の他者が週・月の単位で醸造し、構造的に解釈する（MEMOの雑記に加え、統合タブで取り込んだ外部SNSの自分の投稿も材料になる）。毎回同じ分析フォーマットで蓄積され、時間をまたいだ自己のメタ分析になる。</p>
 
     <div class="card">
       <h2>レポートを作成</h2>
@@ -330,20 +326,6 @@
   </section>
 
 </main>
-
-<!-- 引用モーダル -->
-<div class="modal-backdrop" id="quoteModal" hidden>
-  <div class="modal card">
-    <h3>引用して刻む（接ぎ木）</h3>
-    <blockquote id="quoteTarget"></blockquote>
-    <button class="btn small" id="quoteViewThreadBtn">🧵 その時の連を見る</button>
-    <textarea id="quoteText" rows="3" placeholder="過去の自分に、いまの自分は何を重ねる？"></textarea>
-    <div class="modal-actions">
-      <button class="btn" id="quoteCancelBtn">やめる</button>
-      <button class="btn primary" id="quoteSubmitBtn">刻む</button>
-    </div>
-  </div>
-</div>
 
 <script type="module" src="js/app.js"></script>
 </body>

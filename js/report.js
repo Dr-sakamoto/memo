@@ -7,6 +7,14 @@
 
 import { getPosts, getReports, hasReport, addReport, newReportId, getSettings } from "./store.js";
 import { runReportWorkflow, runRollupWorkflow } from "./workflow.js";
+import { ownExternalAsPosts } from "./hub.js";
+
+// 醸造の材料: MEMOの雑記 ＋ 外部SNSに書いた自分の投稿（設定でON時）を一本化した流れ（新しい順）
+function brewPool() {
+  const ext = ownExternalAsPosts();
+  if (ext.length === 0) return getPosts();
+  return [...getPosts(), ...ext].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
 
 // スキーマ版数。1 = 初版 / 2 = 前回の一手の追跡（previous_action_review）と
 // 持ち越し宿題（open_loops）を追加。既存のv1レポートはlocalStorageにそのまま残るため、
@@ -170,7 +178,7 @@ function yearStartOf(date) {
 
 // 生成可能な期間 = 「完了した週/月」で、ポストがあり、レポート未作成のもの（新しい順）
 export function listGeneratablePeriods(now = new Date()) {
-  const posts = getPosts();
+  const posts = brewPool();
   if (posts.length === 0) return [];
   const first = new Date(posts[posts.length - 1].createdAt);
   const out = [];
@@ -346,7 +354,7 @@ export async function generateReport(period, { onProgress } = {}) {
     reportCount = reports.length;
     postCount = reports.reduce((sum, r) => sum + (r.postCount || 0), 0);
   } else {
-    const posts = postsInRange(getPosts(), period.from, period.to);
+    const posts = postsInRange(brewPool(), period.from, period.to);
     if (posts.length === 0) throw new Error("この期間のポストがありません");
     const built = await runReportWorkflow(period, posts, {
       schema: REPORT_SCHEMA,

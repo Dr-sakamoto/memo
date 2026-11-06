@@ -44,7 +44,6 @@ const state = {
   visible: PAGE,
 };
 let ext = { connected: false, version: "", received: 0 };
-let callbacks = { onQuoteToMemo: () => {} };
 
 // MEMOの雑記を統合リスト用の形に揃える（中身はそのまま参照）
 function memoItems() {
@@ -111,8 +110,7 @@ function itemHtml(it) {
   const open = it.url ? `<a class="hub-act" href="${escapeHtml(it.url)}" target="_blank" rel="noopener noreferrer">↗ 元を開く</a>` : "";
   const share = it.source === "memo"
     ? `<a class="hub-act" href="https://x.com/intent/post?text=${encodeURIComponent(it.text.slice(0, 270))}" target="_blank" rel="noopener noreferrer" title="Xの投稿画面を開く（自動投稿はしません）">𝕏 Xにも投稿</a>`
-    : `<button class="hub-act" data-hub-action="quote" data-id="${escapeHtml(it.id)}">🌿 MEMOで接ぎ木</button>
-       <button class="hub-act danger" data-hub-action="delete" data-id="${escapeHtml(it.id)}">削除</button>`;
+    : `<button class="hub-act danger" data-hub-action="delete" data-id="${escapeHtml(it.id)}">削除</button>`;
   return `
   <article class="post hub-item" style="--src:${m.color}">
     <div class="post-head">
@@ -237,6 +235,7 @@ export function renderHub() {
   $("#hubHandleX").value = s.myHandles.x || "";
   $("#hubHandle755").value = s.myHandles["755"] || "";
   $("#hubSyncExternal").checked = Boolean(s.syncExternal);
+  $("#hubBrewExternal").checked = s.brewExternal !== false;
   $("#hubMineOnly").checked = state.mineOnly;
   $("#hubSort").value = state.sort;
 
@@ -338,9 +337,7 @@ function rerender() {
   renderHub();
 }
 
-export function initHub({ onQuoteToMemo } = {}) {
-  if (onQuoteToMemo) callbacks.onQuoteToMemo = onQuoteToMemo;
-
+export function initHub() {
   $("#hubSourceChips").addEventListener("click", (e) => {
     const b = e.target.closest("[data-hub-source]");
     if (!b) return;
@@ -394,13 +391,13 @@ export function initHub({ onQuoteToMemo } = {}) {
     if (act.dataset.hubAction === "delete" && confirm("この取り込み投稿を削除しますか？（元のSNS上の投稿は消えません）")) {
       deleteExternal(it.id);
     }
-    if (act.dataset.hubAction === "quote") callbacks.onQuoteToMemo(it);
   });
 
   $("#hubSaveHandlesBtn").addEventListener("click", () => {
     saveHubSettings({
       myHandles: { x: $("#hubHandleX").value.trim(), "755": $("#hubHandle755").value.trim() },
       syncExternal: $("#hubSyncExternal").checked,
+      brewExternal: $("#hubBrewExternal").checked,
     });
     $("#hubImportMsg").textContent = "保存しました";
   });

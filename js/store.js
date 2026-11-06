@@ -22,7 +22,6 @@ const DEFAULT_SETTINGS = {
   aiAutoReply: false,
   reportWorkflow: "auto",           // "auto" | "force" | "single"（レポート生成の多段解析モード）
   freeTierRpm: 10,                  // 無料枠対策のAPIレート上限（毎分）
-  threadWindowMin: 5,               // 連（スレッド）: 直前の投稿からこの分数以内なら「同じ一息」として自動で束ねる
 };
 
 function load(key, fallback) {
@@ -102,76 +101,27 @@ export function extractTags(text) {
   return [...tags];
 }
 
-// type: "post" | "repost" | "quote"
-// standalone: true にすると連（スレッド）への自動連結を抑止し、新しい話題として切る
-export function addPost({ text, mood, type = "post", refId = null, standalone = false }) {
-  const now = new Date();
+// つぶやきは1件ずつ独立して一本の流れに溜める（連・接ぎ木・再芽といった投稿どうしの
+// 連結はつくらない）。過去データの threadId / refId / quoteCount 等は消さずに保持する。
+export function addPost({ text, mood }) {
   const post = {
     id: newId(),
-    type,
+    type: "post",
     text: text || "",
     kind: "雑記",
     mood: mood ?? null,
     tags: extractTags(text || ""),
-    refId,
+    refId: null,
     threadId: null,
     repostCount: 0,
     quoteCount: 0,
     aiReply: null,
-    createdAt: now.toISOString(),
+    createdAt: new Date().toISOString(),
   };
   posts.unshift(post);
-
-  // 連（スレッド）: 連続した通常投稿は「同じ一息」として自動で束ねる。
-  // 接ぎ木（意味の接続）とは別プリミティブなので、質量は水増ししない。
-  if (type === "post" && !standalone) {
-    const prev = posts[1]; // unshift直後なので直前の投稿は index 1
-    if (prev && prev.type === "post") {
-      const gapMin = (now.getTime() - new Date(prev.createdAt).getTime()) / 60000;
-      const windowMin = settings.threadWindowMin ?? DEFAULT_SETTINGS.threadWindowMin;
-      if (gapMin >= 0 && gapMin <= windowMin) {
-        post.threadId = prev.threadId || newId();
-        if (!prev.threadId) prev.threadId = post.threadId;
-      }
-    }
-  }
-
-  if (refId) {
-    const ref = getPost(refId);
-    if (ref) {
-      if (type === "repost") ref.repostCount = (ref.repostCount || 0) + 1;
-      if (type === "quote") ref.quoteCount = (ref.quoteCount || 0) + 1;
-    }
-  }
   save(POSTS_KEY, posts);
   notifyMutation();
   return post;
-}
-
-// 連（スレッド）の途中で「ここから話題が変わる」と手動で断ち切る。
-// postId は継続側（新しい方）の投稿。そこから新しい側と古い側の2つの塊に分割する。
-export function breakThreadLink(postId) {
-  const idx = posts.findIndex((p) => p.id === postId);
-  if (idx === -1) return false;
-  const tid = posts[idx].threadId;
-  if (!tid || !posts[idx + 1] || posts[idx + 1].threadId !== tid) return false;
-
-  // 同じ threadId の連続範囲を求める（新しい側の始点 s 〜 古い側の終点 e）
-  let s = idx;
-  while (s - 1 >= 0 && posts[s - 1].threadId === tid) s--;
-  let e = idx;
-  while (e + 1 < posts.length && posts[e + 1].threadId === tid) e++;
-
-  const newerSeg = posts.slice(s, idx + 1);
-  const olderSeg = posts.slice(idx + 1, e + 1);
-
-  const newTid = newerSeg.length > 1 ? newId() : null;
-  newerSeg.forEach((p) => { p.threadId = newTid; });
-  if (olderSeg.length === 1) olderSeg[0].threadId = null;
-
-  save(POSTS_KEY, posts);
-  notifyMutation();
-  return true;
 }
 
 export function deletePost(id) {

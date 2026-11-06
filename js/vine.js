@@ -6,10 +6,10 @@
 export const STAGES = [
   { minDays: 0,   name: "種",   emoji: "🌰", desc: "まだ土の中。刻み続けよう。" },
   { minDays: 7,   name: "発芽", emoji: "🌱", desc: "芽が出た。過去の自分が流れ始める。" },
-  { minDays: 21,  name: "蔓",   emoji: "🌿", desc: "蔓が伸びていく。記録が絡まり合う。" },
+  { minDays: 21,  name: "蔓",   emoji: "🌿", desc: "蔓が伸びていく。つぶやきが一本の流れになる。" },
   { minDays: 60,  name: "葉",   emoji: "🍃", desc: "葉が茂る。思考に日が当たる。" },
   { minDays: 180, name: "花",   emoji: "🌸", desc: "花が咲いた。実りは近い。" },
-  { minDays: 365, name: "実",   emoji: "🍇", desc: "房が実った。過去は熟成し、いつでも味わえる。" },
+  { minDays: 365, name: "実",   emoji: "🍇", desc: "房が実った。一年分の流れが醸され、いつでも味わえる。" },
 ];
 
 export function stageOf(activeDays) {
@@ -29,9 +29,9 @@ export function isSprouted(activeDays) {
   return activeDays >= 7;
 }
 
-// 房（ふさ）＝ 引用でつながったポストのまとまりの数
-export function bunchCount(posts) {
-  return posts.filter((p) => (p.quoteCount || 0) > 0).length;
+// 房（ふさ）＝ つぶやきの流れからAIが醸造したレポートの数（週次・月次・四半期・年次）
+export function bunchCount(reports) {
+  return (reports || []).length;
 }
 
 // ---- SVG描画 ----

@@ -43,6 +43,7 @@ let deletedExt = load(DELETED_EXT_KEY, {});
 let hubSettings = {
   myHandles: { x: "", "755": "" }, // 「自分の投稿」判定に使うハンドル（カンマ区切り可）
   syncExternal: false,              // クラウド同期に外部ポストも含めるか
+  brewExternal: true,               // レポート（醸造）と電光掲示板に、外部SNSの「自分の投稿」も含めるか
   ...load(HUB_SETTINGS_KEY, {}),
 };
 
@@ -186,6 +187,30 @@ export function clearSource(source) {
   save(EXTERNAL_KEY, items);
   save(DELETED_EXT_KEY, deletedExt);
   notify();
+}
+
+// ---- 醸造プール ----
+// つぶやきレベルのアウトプットを一本化する: MEMOの雑記と、外部SNSに書いた自分の投稿を
+// 同じ「つぶやき」として並べ、レポート（AIの醸造）と電光掲示板の材料にする。
+// 外部投稿は雑記の形（id / text / createdAt / mood / tags）に揃え、source で出自を残す。
+export function ownExternalAsPosts() {
+  if (!hubSettings.brewExternal) return [];
+  return items
+    .filter((it) => isMine(it) && !it.isRepost && it.text.trim() && it.text.trim() !== "🖼")
+    .map((it) => ({
+      id: it.id,
+      type: "post",
+      source: it.source,
+      text: it.text,
+      createdAt: it.createdAt,
+      mood: null,
+      tags: it.tags || [],
+      url: it.url || "",
+    }));
+}
+
+export function getExternalById(id) {
+  return items.find((it) => it.id === id) || null;
 }
 
 // ---- クラウド同期用 ----
