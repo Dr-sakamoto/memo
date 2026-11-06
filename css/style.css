@@ -609,3 +609,11 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .hub-srcbar-track > div { height: 100%; }
 #hubImportCard summary { cursor: pointer; }
 #hubImportCard .field { flex: 1; min-width: 180px; }
+
+/* ===== Claudeのルーティン連携 ===== */
+.routine-title { font-size: .95rem; margin: 6px 0; }
+.routine-badge {
+  font-size: .68rem; font-weight: normal; color: var(--leaf);
+  background: var(--card-2); border-radius: 999px; padding: 1px 7px; margin-left: 4px;
+}
+#routineTokenOut { flex: 1; min-width: 200px; font-family: ui-monospace, monospace; font-size: .75rem; }

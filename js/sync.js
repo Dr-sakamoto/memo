@@ -11,7 +11,7 @@
 //   墓標に載っているidを除外することで、他端末に残っていても復活しないようにする。
 
 import { snapshot, replaceData } from "./store.js";
-import { externalSnapshot, replaceExternal } from "./hub.js";
+import { externalSnapshot, replaceExternal, hubPrefsSnapshot } from "./hub.js";
 
 const CONFIG_KEY = "cns.sync.config.v1";   // { url, anonKey, autoSync }
 const SESSION_KEY = "cns.sync.session.v1"; // { access_token, refresh_token, expires_at, user }
@@ -213,6 +213,7 @@ async function pullRemote(token, userId) {
     deletedReportIds: data.deletedReportIds || {},
     external: data.external || [],
     deletedExternalIds: data.deletedExternalIds || {},
+    hubPrefs: data.hubPrefs || null,
   };
 }
 
@@ -227,6 +228,90 @@ async function pushRemote(token, userId, data) {
       Prefer: "resolution=merge-duplicates,return=minimal",
     },
     body: JSON.stringify([{ user_id: userId, data, updated_at: new Date().toISOString() }]),
+  });
+  if (!res.ok) throw await parseError(res);
+}
+
+// ---- ルーティンの受け取り箱（memo_inbox） ----
+// Claudeのルーティンが醸造したレポートはここに置かれる（docs/supabase-routine.sql）。
+// 同期のたびに取り込み、通常のレポートと同じ列に合流させてから箱を空にする。
+// テーブルが未作成のプロジェクトでも同期全体は止めない（取り込みだけ諦める）。
+
+async function pullInbox(token, userId) {
+  const { anonKey } = getConfig();
+  const res = await fetch(`${restBase()}/memo_inbox?select=id,payload&kind=eq.report&user_id=eq.${userId}`, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const rows = await res.json();
+  return rows.map((r) => r.payload).filter((p) => p && p.id && p.periodKey && p.data);
+}
+
+async function clearInbox(token, ids) {
+  if (ids.length === 0) return;
+  const { anonKey } = getConfig();
+  const list = ids.map((id) => `"${String(id).replaceAll('"', "")}"`).join(",");
+  await fetch(`${restBase()}/memo_inbox?id=in.(${encodeURIComponent(list)})`, {
+    method: "DELETE",
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
+  }).catch(() => {});
+}
+
+// 受け取り箱のレポートを remote.reports に混ぜる（＝他端末から届いたレポートと同じ扱い）。
+// 同じ期間のレポートが既にあれば（アプリ内でも生成済みなど）重複させずに捨てる。
+function absorbInbox(remote, localReports, inboxReports) {
+  const keys = new Set([...(remote.reports || []), ...(localReports || [])].map((r) => r.periodKey));
+  const ids = new Set([...(remote.reports || []), ...(localReports || [])].map((r) => r.id));
+  const fresh = inboxReports.filter((r) => !keys.has(r.periodKey) && !ids.has(r.id));
+  return { ...remote, reports: [...(remote.reports || []), ...fresh] };
+}
+
+// ---- ルーティン連携トークン ----
+// ルーティンはログインせず、このトークンでだけ「読む」「受け取り箱に置く」ができる。
+// サーバーにはSHA-256のハッシュだけを保存し、平文は発行時に一度だけ画面に出す。
+
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export async function routineTokenStatus() {
+  if (!isConfigured() || !isLoggedIn()) return { available: false };
+  const token = await ensureFreshToken();
+  const { anonKey } = getConfig();
+  const res = await fetch(`${restBase()}/memo_routine_tokens?select=created_at&user_id=eq.${getSession().user.id}`, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return { available: false, error: "ルーティン連携用のテーブルがありません（docs/supabase-routine.sql を実行してください）" };
+  const rows = await res.json();
+  return { available: true, issuedAt: rows[0]?.created_at || null };
+}
+
+export async function issueRoutineToken() {
+  const token = await ensureFreshToken();
+  const { anonKey } = getConfig();
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const plain = "memo_rt_" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const res = await fetch(`${restBase()}/memo_routine_tokens`, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify([{ user_id: getSession().user.id, token_hash: await sha256Hex(plain), created_at: new Date().toISOString() }]),
+  });
+  if (!res.ok) throw await parseError(res);
+  return plain;
+}
+
+export async function revokeRoutineToken() {
+  const token = await ensureFreshToken();
+  const { anonKey } = getConfig();
+  const res = await fetch(`${restBase()}/memo_routine_tokens?user_id=eq.${getSession().user.id}`, {
+    method: "DELETE",
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw await parseError(res);
 }
@@ -294,7 +379,11 @@ function mergeState(local, remote) {
       .sort(byCreatedAtDesc);
   }
 
-  return { posts, reports, deletedPostIds, deletedReportIds, external, deletedExternalIds };
+  // 統合タブの設定のうち「自分の投稿」の判定に必要なもの。ルーティンが醸造の材料を
+  // アプリと同じ基準で選べるよう、この端末の値をクラウドに置く（端末側は上書きしない）。
+  const hubPrefs = local.hubPrefs || remote.hubPrefs || null;
+
+  return { posts, reports, deletedPostIds, deletedReportIds, external, deletedExternalIds, hubPrefs };
 }
 
 // 同じ外部投稿は、後から取得した方（いいね数などが新しい）を残す
@@ -315,9 +404,16 @@ export async function syncNow() {
     const token = await ensureFreshToken();
     const userId = getSession().user.id;
 
-    const remote = await pullRemote(token, userId);
+    const pulled = await pullRemote(token, userId);
     const extLocal = externalSnapshot(); // 同期OFFなら null
-    const local = { ...snapshot(), external: extLocal?.external || null, deletedExternalIds: extLocal?.deletedExternalIds || {} };
+    const local = {
+      ...snapshot(),
+      external: extLocal?.external || null,
+      deletedExternalIds: extLocal?.deletedExternalIds || {},
+      hubPrefs: hubPrefsSnapshot(),
+    };
+    const inbox = await pullInbox(token, userId);
+    const remote = inbox.length ? absorbInbox(pulled, local.reports, inbox) : pulled;
     const merged = mergeState(local, remote);
 
     // ローカルに変化があるか（リモートから増えた分・他端末での削除分）を判定
@@ -345,11 +441,15 @@ export async function syncNow() {
       JSON.stringify(merged.deletedPostIds) !== JSON.stringify(remote.deletedPostIds) ||
       JSON.stringify(merged.deletedReportIds) !== JSON.stringify(remote.deletedReportIds) ||
       JSON.stringify(merged.external) !== JSON.stringify(remote.external) ||
-      JSON.stringify(merged.deletedExternalIds) !== JSON.stringify(remote.deletedExternalIds);
+      JSON.stringify(merged.deletedExternalIds) !== JSON.stringify(remote.deletedExternalIds) ||
+      JSON.stringify(merged.hubPrefs) !== JSON.stringify(remote.hubPrefs) ||
+      inbox.length > 0; // 受け取り箱の分は pulled（実際のリモート）に無いので必ず書き戻す
 
     if (remoteChanged) {
       await pushRemote(token, userId, merged);
     }
+    // memo_state に書き戻せてから箱を空にする（途中で失敗しても次回また取り込める）
+    if (inbox.length) await clearInbox(token, inbox.map((r) => r.id));
 
     lastSyncAt = new Date();
   } catch (err) {

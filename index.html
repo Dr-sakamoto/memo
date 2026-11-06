@@ -301,6 +301,25 @@
         </div>
         <p class="muted" id="syncNote"></p>
       </div>
+
+      <!-- Claudeのルーティン連携（ログイン時） -->
+      <div id="routineBox" hidden>
+        <hr>
+        <h3 class="routine-title">🤖 Claudeのルーティンに醸造を任せる</h3>
+        <p class="muted">採取はこのアプリ、分析（醸造）はClaudeのルーティンが担当します。ルーティンは毎週、同期された一本の流れを読んでレポートを作り、ここへ届けます（レポートタブに 🤖 ルーティン の印つきで並びます）。ルーティンに渡すのは「読む」と「レポートを置く」だけができる専用トークンで、雑記を書き換えたりログインしたりはできません。</p>
+        <p class="muted" id="routineStatus"></p>
+        <div class="row-gap">
+          <button class="btn" id="routineIssueBtn">連携トークンを発行</button>
+          <button class="btn danger" id="routineRevokeBtn" hidden>連携を無効化</button>
+        </div>
+        <div id="routineTokenWrap" hidden>
+          <p class="muted">⚠️ このトークンは今しか表示されません。Claude側の登録フォーム（ネットワークシークレット）にだけ貼り付けてください。チャットには貼らないでください。</p>
+          <div class="row-gap">
+            <input type="text" id="routineTokenOut" readonly>
+            <button class="btn small" id="routineCopyBtn">コピー</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="card">

@@ -209,6 +209,11 @@ export function ownExternalAsPosts() {
     }));
 }
 
+// クラウドに置く統合タブの設定（ルーティンの醸造がアプリと同じ基準で材料を選ぶため）
+export function hubPrefsSnapshot() {
+  return { myHandles: { ...hubSettings.myHandles }, brewExternal: hubSettings.brewExternal !== false };
+}
+
 export function getExternalById(id) {
   return items.find((it) => it.id === id) || null;
 }

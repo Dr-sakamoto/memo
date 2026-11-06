@@ -10,12 +10,13 @@ import {
 import {
   initSync, getSyncState, saveConfig as saveSyncConfig,
   signIn, signUp, signOut, syncNow, setAutoSync, scheduleAutoPush,
+  routineTokenStatus, issueRoutineToken, revokeRoutineToken,
 } from "./sync.js";
 import { milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
 import { stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
 import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, currentModelLabel } from "./ai.js";
 import { initHub, renderHub } from "./hub-ui.js";
-import { wipeExternal, onHubChange, getHubSettings, ownExternalAsPosts, getExternalById, sourceMeta } from "./hub.js";
+import { wipeExternal, onHubChange, ownExternalAsPosts, getExternalById, sourceMeta } from "./hub.js";
 import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, themeLifecycles, recurringBlindSpots, suggestionFollowThrough, selfReportedMoodByPeriod } from "./report.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -67,6 +68,7 @@ function switchView(name) {
   });
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
   if (name === "hub") renderHub();
+  if (name === "settings") renderRoutineStatus();
   if (name === "timeaxis") renderTimeaxis();
   if (name === "vine") renderVine();
   if (name === "report") renderReportView();
@@ -571,6 +573,7 @@ function pipelineNote(p) {
   if (p.mode === "map-reduce") return ` / 多段解析（${p.chunks}分割→${p.units}観測ユニット, API${p.requests}回）`;
   if (p.mode === "rollup-map-reduce") return ` / ロールアップ多段解析（${p.chunks}グループ→${p.units}件のレポートを統合, API${p.requests}回）`;
   if (p.mode === "rollup-single") return ` / ロールアップ一括解析（${p.units}件のレポートを統合）`;
+  if (p.mode === "routine") return " / Claudeのルーティンで醸造";
   return " / 一括解析";
 }
 
@@ -665,7 +668,7 @@ function reportCardHtml(r) {
   return `
   <article class="card report-card${isRollup ? " report-card-rollup" : ""}" data-report-id="${r.id}">
     <div class="report-head">
-      <span class="report-period">${PERIOD_TYPE_LABEL[r.periodType] || r.periodType} ${escapeHtml(r.periodLabel)}</span>
+      <span class="report-period">${PERIOD_TYPE_LABEL[r.periodType] || r.periodType} ${escapeHtml(r.periodLabel)}${r.provider === "routine" ? ' <span class="routine-badge" title="Claudeのルーティンが自動で醸造したレポート">🤖 ルーティン</span>' : ""}</span>
       <span class="report-mood" title="AIが観測した気分スコア">${d.mood_score >= 0 ? "+" : ""}${Number(d.mood_score).toFixed(1)} ${TREND_LABEL[d.mood_trend] || ""}</span>
     </div>
     ${followUpHtml(r)}
@@ -1100,7 +1103,58 @@ function renderSyncUI() {
     $("#syncStatusText").textContent = text;
     $("#syncNote").textContent = "※ 削除も同期されます。反映にはもう一方の端末を開く（または少し待つ）必要があります。";
   }
+  $("#routineBox").hidden = !st.loggedIn;
 }
+
+// ---------- Claudeのルーティン連携（分析＝醸造をルーティンに任せる） ----------
+
+async function renderRoutineStatus() {
+  const el = $("#routineStatus");
+  if (!el || $("#routineBox").hidden) return;
+  try {
+    const st = await routineTokenStatus();
+    if (!st.available) { el.textContent = st.error || ""; return; }
+    el.textContent = st.issuedAt
+      ? `連携中（トークン発行: ${fmtDateTime(st.issuedAt)}）。ルーティンが醸造したレポートは、同期のたびにレポートタブへ届きます。`
+      : "未連携。トークンを発行し、Claudeのルーティン側に登録すると、週ごとの醸造が自動で届くようになります。";
+    $("#routineRevokeBtn").hidden = !st.issuedAt;
+  } catch (err) {
+    el.textContent = `確認できませんでした: ${err.message}`;
+  }
+}
+
+$("#routineIssueBtn").addEventListener("click", async () => {
+  if (!confirm("ルーティン連携トークンを発行しますか？（既に発行済みなら古いトークンは無効になります）")) return;
+  try {
+    const token = await issueRoutineToken();
+    $("#routineTokenOut").value = token;
+    $("#routineTokenWrap").hidden = false;
+    renderRoutineStatus();
+  } catch (err) {
+    $("#routineStatus").textContent = `発行できませんでした: ${err.message}`;
+  }
+});
+
+$("#routineCopyBtn").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("#routineTokenOut").value);
+    $("#routineCopyBtn").textContent = "コピーしました";
+  } catch {
+    $("#routineTokenOut").select();
+  }
+});
+
+$("#routineRevokeBtn").addEventListener("click", async () => {
+  if (!confirm("ルーティン連携を無効化しますか？ルーティンは雑記を読めなくなり、レポートも届かなくなります。")) return;
+  try {
+    await revokeRoutineToken();
+    $("#routineTokenWrap").hidden = true;
+    $("#routineTokenOut").value = "";
+    renderRoutineStatus();
+  } catch (err) {
+    $("#routineStatus").textContent = `無効化できませんでした: ${err.message}`;
+  }
+});
 
 $("#syncConfigSaveBtn").addEventListener("click", () => {
   const url = $("#syncUrlInput").value.trim();
@@ -1165,7 +1219,8 @@ $("#syncAutoToggle").addEventListener("change", (e) => {
 onMutation(() => scheduleAutoPush());
 // 統合ハブの取り込み・設定変更も、外部投稿の同期がONなら自動プッシュ（同期由来の反映は除く）
 onHubChange((meta) => {
-  if (!meta?.remote && getHubSettings().syncExternal) scheduleAutoPush();
+  // 外部投稿の同期OFFでも「自分の投稿」判定の設定（hubPrefs）はルーティン用にクラウドへ置く
+  if (!meta?.remote) scheduleAutoPush();
   updatePendingBanner(); // 外部の自分の投稿も醸造の材料なので、未作成レポートの判定が変わりうる
 });
 

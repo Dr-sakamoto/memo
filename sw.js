@@ -1,7 +1,7 @@
 // アプリシェルのオフラインキャッシュ。データはlocalStorageのみで、SWはUIの資産だけを扱う。
 // 更新手順: デプロイでシェルの中身を変えたら CACHE_VERSION を上げること。
 // 上げないとブラウザがsw.js自体の変更を検知できず、古いキャッシュが延々と配信され続ける。
-const CACHE_VERSION = "v13";
+const CACHE_VERSION = "v14";
 const CACHE_NAME = `memo-shell-${CACHE_VERSION}`;
 
 const SHELL_ASSETS = [
@@ -17,6 +17,7 @@ const SHELL_ASSETS = [
   "./js/vine.js",
   "./js/hub.js",
   "./js/hub-ui.js",
+  "./js/schema.js",
   "./js/workflow.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
