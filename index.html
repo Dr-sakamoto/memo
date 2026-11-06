@@ -86,7 +86,7 @@
 
     <details class="card" id="hubImportCard">
       <summary><b>📥 取り込み</b> <span class="muted" id="hubExtStatus"></span></summary>
-      <p class="muted"><b>① Chrome拡張（おすすめ）</b> — <code>extension/</code> フォルダを chrome://extensions →「パッケージ化されていない拡張機能を読み込む」で追加。X・755を普段どおり閲覧するだけで表示された投稿が拡張に貯まり、このページを開くと自動で届きます。任意のサイトでも、文字を選択して右クリック →「MEMOハブへ送る」で取り込めます。</p>
+      <p class="muted"><b>① Chrome拡張（おすすめ）</b> — <code>extension/</code> フォルダを chrome://extensions →「パッケージ化されていない拡張機能を読み込む」で追加。Xは普段どおり閲覧するだけで、表示された投稿が拡張に貯まります。755は拡張の「追跡リスト」に追いたいトーク（アカウント）を登録すると、3時間おきに新着が自動で集まります。どちらも、このページを開くと自動で届きます。任意のサイトでも、文字を選択して右クリック →「MEMOハブへ送る」で取り込めます。</p>
       <p class="muted"><b>② Xの公式アーカイブ</b> — X の「設定 → アカウント → データのアーカイブをダウンロード」で得たZIP内の <code>data/tweets.js</code>（複数あれば <code>tweets-part1.js</code> なども）を選択。過去の全投稿をまとめて取り込めます。</p>
       <p class="muted"><b>③ JSON</b> — 拡張の「JSONで書き出し」や、このページのJSONエクスポートも読み込めます。</p>
       <label class="btn file-btn">ファイルを選んで取り込む<input type="file" id="hubImportFile" accept=".js,.json,application/json,text/javascript" multiple hidden></label>

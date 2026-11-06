@@ -20,6 +20,15 @@
   .muted { color: var(--muted); font-size: 11px; }
   hr { border: none; border-top: 1px solid var(--line); margin: 10px 0; }
   #msg { min-height: 1.2em; }
+  [hidden] { display: none !important; }
+  h2 { font-size: 13px; margin: 0 0 4px; }
+  #trackInput { flex: 1; }
+  #trackList { list-style: none; padding: 0; margin: 8px 0 0; max-height: 180px; overflow-y: auto; }
+  #trackList li { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  #trackList .t-main { flex: 1; min-width: 0; }
+  #trackList .t-name { font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #trackList .t-err { color: #dc2626; }
+  #trackList button { flex: 0 0 auto; padding: 2px 6px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -34,14 +43,19 @@
     </select>
   </label>
   <label>X のユーザー名（@なし・カンマ区切り）<input type="text" id="handleX" placeholder="your_handle"></label>
-  <label>755 のトークID（URLの 7gogo.jp/〇〇 の部分）<input type="text" id="handle755" placeholder="your_talk"></label>
+  <label>自分の755のトークID（URLの 7gogo.jp/〇〇 の部分）<input type="text" id="handle755" placeholder="your_talk"></label>
   <div class="row"><button class="primary" id="save">保存</button></div>
 
-  <div id="box755" hidden>
-    <hr>
-    <p>7️⃣ このトーク（<b id="talkCode"></b>）の投稿を遡って取得します <span class="muted">（実験的・最大3000件）</span></p>
-    <div class="row"><button id="fetch755">このトークを取得</button></div>
+  <hr>
+  <h2>7️⃣ 755 追跡リスト</h2>
+  <p class="muted">登録したトーク（アカウント）の新着を、Chromeが開いている間3時間おきに自動で取ってきます。初回は新しい方から最大3000件さかのぼります。</p>
+  <div class="row">
+    <input type="text" id="trackInput" placeholder="トークID か https://7gogo.jp/〇〇">
+    <button class="primary" id="trackAdd" style="flex:0 0 auto">追加</button>
   </div>
+  <div class="row" id="trackHereRow" hidden><button id="trackHere">いま開いているトーク（<b id="talkCode"></b>）を追加</button></div>
+  <ul id="trackList"></ul>
+  <div class="row"><button id="trackRefreshAll">すべて今すぐ更新</button></div>
 
   <hr>
   <div class="row">
