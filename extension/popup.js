@@ -21,11 +21,93 @@ async function load() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const m = tab?.url?.match(/^https:\/\/7gogo\.jp\/([^/?#]+)/);
   if (m && !["talks", "search", "settings"].includes(m[1])) {
-    $("box755").hidden = false;
+    $("trackHereRow").hidden = false;
     $("talkCode").textContent = m[1];
   }
   renderStats();
+  renderTracks();
 }
+
+function fmtTime(iso) {
+  if (!iso) return "未取得";
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// 追跡リストの描画（名前はサイト由来なので textContent で入れる）
+async function renderTracks() {
+  const tracks = (await chrome.runtime.sendMessage({ type: "track755List" })) || {};
+  const ul = $("trackList");
+  ul.replaceChildren();
+  const ids = Object.keys(tracks);
+  if (ids.length === 0) {
+    const li = document.createElement("li");
+    li.className = "muted";
+    li.textContent = "まだ登録していません";
+    ul.append(li);
+    return;
+  }
+  for (const id of ids) {
+    const t = tracks[id];
+    const li = document.createElement("li");
+    const main = document.createElement("div");
+    main.className = "t-main";
+    const name = document.createElement("div");
+    name.className = "t-name";
+    name.textContent = `${t.name || id}（${id}）`;
+    const sub = document.createElement("div");
+    sub.className = t.lastError ? "muted t-err" : "muted";
+    sub.textContent = t.lastError
+      ? `取得できませんでした: ${t.lastError}`
+      : `最終確認 ${fmtTime(t.lastCheckedAt)}・取り込み ${t.count || 0}件`;
+    main.append(name, sub);
+    const refresh = document.createElement("button");
+    refresh.textContent = "更新";
+    refresh.addEventListener("click", () => run(refresh, { type: "track755Refresh", talkId: id }, (r) => `${id}: ${r.error ? "取得できませんでした" : `新着${r.added}件`}`));
+    const del = document.createElement("button");
+    del.textContent = "外す";
+    del.addEventListener("click", async () => {
+      if (!confirm(`${t.name || id} を追跡リストから外しますか？（取り込み済みの投稿は消えません）`)) return;
+      await chrome.runtime.sendMessage({ type: "track755Remove", talkId: id });
+      renderTracks();
+    });
+    li.append(main, refresh, del);
+    ul.append(li);
+  }
+}
+
+// ボタンを押している間は無効化し、結果を msg に出す
+async function run(btn, message, describe) {
+  btn.disabled = true;
+  $("msg").textContent = "取得中…（初回は時間がかかります）";
+  try {
+    const res = await chrome.runtime.sendMessage(message);
+    $("msg").textContent = res?.error && !("added" in res) ? `できませんでした: ${res.error}` : describe(res || {});
+  } catch (err) {
+    $("msg").textContent = `できませんでした: ${err.message}`;
+  }
+  btn.disabled = false;
+  renderStats();
+  renderTracks();
+}
+
+$("trackAdd").addEventListener("click", () => {
+  const input = $("trackInput").value.trim();
+  if (!input) return;
+  run($("trackAdd"), { type: "track755Add", input }, (r) => {
+    $("trackInput").value = "";
+    return `${r.name}（${r.talkId}）を追加しました${r.error ? `。ただし取得に失敗: ${r.error}` : `。${r.added}件を取り込み`}`;
+  });
+});
+
+$("trackHere").addEventListener("click", () => {
+  run($("trackHere"), { type: "track755Add", input: $("talkCode").textContent }, (r) => `${r.name} を追加しました（${r.added}件を取り込み）`);
+});
+
+$("trackRefreshAll").addEventListener("click", () => {
+  run($("trackRefreshAll"), { type: "track755Refresh" }, (r) =>
+    `${r.talks}件のトークを確認・新着${r.added}件${r.errors?.length ? `（失敗 ${r.errors.length}件）` : ""}`);
+});
 
 $("save").addEventListener("click", async () => {
   await chrome.storage.local.set({
@@ -36,16 +118,6 @@ $("save").addEventListener("click", async () => {
     },
   });
   $("msg").textContent = "保存しました";
-});
-
-$("fetch755").addEventListener("click", async () => {
-  const code = $("talkCode").textContent;
-  $("fetch755").disabled = true;
-  $("msg").textContent = "取得中…（ページ数が多いと時間がかかります）";
-  const res = await chrome.runtime.sendMessage({ type: "fetch755", talkCode: code });
-  $("fetch755").disabled = false;
-  $("msg").textContent = res?.error ? `取得できませんでした: ${res.error}` : `${res.total}件を取得しました`;
-  renderStats();
 });
 
 $("openMemo").addEventListener("click", async () => {
