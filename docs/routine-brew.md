@@ -16,8 +16,11 @@ MEMOでは **採取はアプリ、分析（醸造）はClaudeのルーティン*
 1. **材料を取る**
 
    ```sh
-   node scripts/routine/brew-fetch.mjs --out brew-work
+   NODE_USE_ENV_PROXY=1 node scripts/routine/brew-fetch.mjs --out brew-work
    ```
+
+   - `NODE_USE_ENV_PROXY=1` は必須（Node の fetch をクラウド環境のプロキシ経由にし、連携トークンを差し込ませるため。付けないと `invalid routine token` になる）。`brew-put.mjs` も同じ
+   - `MEMO_ROUTINE_TOKEN` は設定しない（設定するとプロキシが差し込むトークンより優先される）
 
    - `NOTHING_PENDING` と出たら、醸造すべき期間は無い。**何もせず静かに終了する**（報告不要）
    - それ以外は、作業ファイル（`brew-work/weekly_YYYY-MM-DD.json` など）が期間ごとに1つずつ出る
@@ -43,7 +46,7 @@ MEMOでは **採取はアプリ、分析（醸造）はClaudeのルーティン*
 3. **届ける**
 
    ```sh
-   node scripts/routine/brew-put.mjs brew-work/<名前>.json brew-work/<名前>.analysis.json --model "<実行中のモデル名>"
+   NODE_USE_ENV_PROXY=1 node scripts/routine/brew-put.mjs brew-work/<名前>.json brew-work/<名前>.analysis.json --model "<実行中のモデル名>"
    ```
 
    `DELIVERED ...` と出れば完了。アプリは次の同期で、レポートタブに「🤖 ルーティン」の印つきで取り込む。
@@ -55,6 +58,6 @@ MEMOでは **採取はアプリ、分析（醸造）はClaudeのルーティン*
 
 ## 失敗したとき
 
-- `HTTP 401` / `invalid routine token` … トークンが無効化されたか未登録。何もせず、その旨だけ報告する
+- `HTTP 401` / `HTTP 403` / `invalid routine token` … まず `NODE_USE_ENV_PROXY=1` を付けて実行したか確認する。付けていても出るなら、トークンが無効化されたか未登録。何もせず、その旨だけ報告する
 - `request blocked` / 接続できない … ネットワーク設定でホストが許可されていない。その旨だけ報告する
 - Supabaseのプロジェクトが一時停止中（無料枠で7日間アクセスが無いと停止する）… その旨だけ報告する

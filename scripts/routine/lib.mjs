@@ -2,7 +2,7 @@
 // 接続先はアプリと同じ（js/sync.js の既定値）。環境変数で上書きできる:
 //   MEMO_SUPABASE_URL / MEMO_SUPABASE_ANON_KEY / MEMO_TZ（既定 Asia/Tokyo）
 // 連携トークンはヘッダ x-memo-routine-token で送る。クラウド環境ではネットワーク
-// シークレットとしてプロキシが差し込むので、MEMO_ROUTINE_TOKEN は無くてよい。
+// シークレットとしてプロキシが差し込むので、MEMO_ROUTINE_TOKEN は設定しないこと。
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -30,14 +30,14 @@ export function config() {
 
 export async function rpc(name, body = {}) {
   const { url, anonKey } = config();
+  const headers = { apikey: anonKey, "Content-Type": "application/json" };
+  // クラウド環境ではヘッダを付けずに送る。ネットワークシークレットのプロキシが
+  // x-memo-routine-token を差し込む（こちらで仮の値を付けると、それが優先されて失敗する）。
+  // 手元で試すときだけ MEMO_ROUTINE_TOKEN で明示的に渡す。
+  if (process.env.MEMO_ROUTINE_TOKEN) headers["x-memo-routine-token"] = process.env.MEMO_ROUTINE_TOKEN;
   const res = await fetch(`${url}/rest/v1/rpc/${name}`, {
     method: "POST",
-    headers: {
-      apikey: anonKey,
-      "Content-Type": "application/json",
-      // 実際の値はプロキシがネットワークシークレットで置き換える
-      "x-memo-routine-token": process.env.MEMO_ROUTINE_TOKEN || "injected-by-proxy-placeholder-0000000000",
-    },
+    headers,
     body: JSON.stringify(body),
   });
   const text = await res.text();
