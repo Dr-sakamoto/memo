@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>MEMO Hub Collector</title>
+<style>
+  :root { --accent: #7c3aed; --muted: #8d84a3; --line: #e6e1f2; --text: #2a2438; --bg: #fff; --soft: #f6f4fb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --muted: #a39cb8; --line: #3a3348; --text: #ece8f5; --bg: #1c1826; --soft: #262033; }
+  }
+  body { width: 320px; margin: 0; padding: 12px 14px; font: 13px/1.5 "Hiragino Sans", "Noto Sans JP", sans-serif; color: var(--text); background: var(--bg); }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  .stats { background: var(--soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+  .stats b { color: var(--accent); }
+  label { display: block; margin: 6px 0; }
+  input[type=text], select { width: 100%; box-sizing: border-box; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  button { flex: 1; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); cursor: pointer; font: inherit; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .muted { color: var(--muted); font-size: 11px; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 10px 0; }
+  #msg { min-height: 1.2em; }
+</style>
+</head>
+<body>
+  <h1>🍇 MEMO Hub Collector</h1>
+  <div class="stats" id="stats">読み込み中…</div>
+
+  <label><input type="checkbox" id="enabledX"> X を閲覧中に自動で集める</label>
+  <label>集める範囲
+    <select id="mode">
+      <option value="all">表示された投稿すべて（タイムライン・検索も）</option>
+      <option value="mine">自分の投稿だけ</option>
+    </select>
+  </label>
+  <label>X のユーザー名（@なし・カンマ区切り）<input type="text" id="handleX" placeholder="your_handle"></label>
+  <label>755 のトークID（URLの 7gogo.jp/〇〇 の部分）<input type="text" id="handle755" placeholder="your_talk"></label>
+  <div class="row"><button class="primary" id="save">保存</button></div>
+
+  <div id="box755" hidden>
+    <hr>
+    <p>7️⃣ このトーク（<b id="talkCode"></b>）の投稿を遡って取得します <span class="muted">（実験的・最大3000件）</span></p>
+    <div class="row"><button id="fetch755">このトークを取得</button></div>
+  </div>
+
+  <hr>
+  <div class="row">
+    <button id="openMemo">MEMOを開いて届ける</button>
+    <button id="export">JSONで書き出し</button>
+  </div>
+  <div class="row"><button id="clearSent">送信済みを拡張から消す</button></div>
+  <p class="muted" id="msg"></p>
+  <p class="muted">集めた投稿はこのブラウザの中だけに保存され、MEMOのページ以外へは送られません。右クリック →「MEMOハブへ送る」で、どのサイトの選択テキストも取り込めます。</p>
+  <script src="popup.js"></script>
+</body>
+</html>

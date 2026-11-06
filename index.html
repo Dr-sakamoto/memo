@@ -36,6 +36,7 @@
 
 <nav class="tabs" id="tabs">
   <button class="tab active" data-view="timeline">タイムライン</button>
+  <button class="tab" data-view="hub">統合</button>
   <button class="tab" data-view="timeaxis">時間軸</button>
   <button class="tab" data-view="vine">ブドウの木</button>
   <button class="tab" data-view="report">レポート</button>
@@ -85,6 +86,70 @@
       <p class="muted filter-count" id="filterCount" hidden></p>
     </div>
     <div class="feed" id="feed"></div>
+  </section>
+
+  <!-- ===== 統合ハブ（X / 755 などの外部SNS + MEMO） ===== -->
+  <section class="view" id="view-hub" hidden>
+    <p class="view-desc">X・755など外のSNSに書いたものと、ここ（MEMO）の雑記を1本のタイムラインに。横断して閲覧・分析・抽出する。外部の投稿は取り込み専用で、元のSNSには何も書き込みません。</p>
+
+    <details class="card" id="hubImportCard">
+      <summary><b>📥 取り込み</b> <span class="muted" id="hubExtStatus"></span></summary>
+      <p class="muted"><b>① Chrome拡張（おすすめ）</b> — <code>extension/</code> フォルダを chrome://extensions →「パッケージ化されていない拡張機能を読み込む」で追加。X・755を普段どおり閲覧するだけで表示された投稿が拡張に貯まり、このページを開くと自動で届きます。任意のサイトでも、文字を選択して右クリック →「MEMOハブへ送る」で取り込めます。</p>
+      <p class="muted"><b>② Xの公式アーカイブ</b> — X の「設定 → アカウント → データのアーカイブをダウンロード」で得たZIP内の <code>data/tweets.js</code>（複数あれば <code>tweets-part1.js</code> なども）を選択。過去の全投稿をまとめて取り込めます。</p>
+      <p class="muted"><b>③ JSON</b> — 拡張の「JSONで書き出し」や、このページのJSONエクスポートも読み込めます。</p>
+      <label class="btn file-btn">ファイルを選んで取り込む<input type="file" id="hubImportFile" accept=".js,.json,application/json,text/javascript" multiple hidden></label>
+      <hr>
+      <p class="muted">「自分の投稿」の判定に使うアカウント名（@なし・カンマ区切りで複数可）</p>
+      <div class="row-gap">
+        <label class="field"><span>𝕏 X のユーザー名</span><input type="text" id="hubHandleX" placeholder="your_handle"></label>
+        <label class="field"><span>7️⃣ 755 のユーザー名/トークID</span><input type="text" id="hubHandle755" placeholder="your_talk"></label>
+      </div>
+      <label class="field checkbox">
+        <input type="checkbox" id="hubSyncExternal">
+        <span>取り込んだ外部投稿もクラウド同期する（ログイン時のみ・件数が多いと同期が重くなります）</span>
+      </label>
+      <div class="row-gap">
+        <button class="btn primary" id="hubSaveHandlesBtn">保存</button>
+        <select id="hubClearSourceSelect"><option value="x">X</option><option value="755">755</option><option value="web">Web</option></select>
+        <button class="btn danger" id="hubClearSourceBtn">このソースの取り込みを全削除</button>
+      </div>
+      <p class="muted" id="hubImportMsg"></p>
+    </details>
+
+    <div class="feed-filter card">
+      <div class="filter-tags" id="hubSourceChips"></div>
+      <div class="filter-row" style="margin-top:8px">
+        <input type="text" id="hubText" placeholder="検索（スペースでAND、-語 で除外）">
+        <button class="btn small" id="hubClearBtn" hidden>絞り込み解除</button>
+      </div>
+      <div class="filter-row">
+        <input type="date" id="hubFrom"><span class="muted">〜</span><input type="date" id="hubTo">
+      </div>
+      <div class="filter-row">
+        <label class="checkbox-inline"><input type="checkbox" id="hubMineOnly"> 自分の投稿のみ</label>
+        <select id="hubSort">
+          <option value="new">新しい順</option>
+          <option value="old">古い順</option>
+          <option value="like">いいね順</option>
+        </select>
+        <span class="muted" id="hubCount"></span>
+      </div>
+      <div class="filter-row hub-tools">
+        <div class="hub-subtabs" id="hubSubTabs">
+          <button class="tag-chip active" data-hub-sub="list">📜 一覧</button>
+          <button class="tag-chip" data-hub-sub="analyze">📊 分析</button>
+        </div>
+        <span class="hub-export">
+          <button class="btn small" id="hubExportCsvBtn" title="絞り込んだ結果をCSVで書き出し">CSV</button>
+          <button class="btn small" id="hubExportJsonBtn" title="絞り込んだ結果をJSONで書き出し">JSON</button>
+          <button class="btn small primary" id="hubAiBtn" title="絞り込んだ結果をAIが横断分析">🤖 AIで分析</button>
+        </span>
+      </div>
+      <div id="hubAiResult" class="ai-result"></div>
+    </div>
+
+    <div class="feed" id="hubFeed"></div>
+    <div class="card" id="hubAnalysis" hidden></div>
   </section>
 
   <!-- ===== 時間軸 ===== -->

@@ -670,3 +670,34 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+
+/* ===== 統合ハブ ===== */
+.hub-item { border-left: 3px solid var(--src, var(--line)); }
+.hub-src { font-weight: 700; color: var(--src, var(--text)); }
+.hub-who { color: var(--text); }
+.hub-mine {
+  font-size: .68rem; color: var(--accent); background: var(--accent-soft);
+  border-radius: 999px; padding: 1px 6px;
+}
+.hub-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.hub-metrics { font-size: .75rem; color: var(--muted); }
+.hub-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.hub-act {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-size: .78rem; color: var(--muted); text-decoration: none; font-family: inherit;
+}
+.hub-act:hover { color: var(--accent); }
+.hub-act.danger:hover { color: var(--danger); }
+.post-body a { color: var(--accent); word-break: break-all; }
+.hub-tools { justify-content: space-between; margin-bottom: 0; }
+.hub-subtabs { display: flex; gap: 6px; }
+.hub-export { display: flex; gap: 6px; flex-wrap: wrap; }
+.checkbox-inline { display: inline-flex; align-items: center; gap: 4px; font-size: .85rem; }
+#hubAiResult:empty { display: none; }
+#hubAnalysis h3 { font-size: .85rem; margin: 16px 0 6px; color: var(--grape); }
+.hub-chart { display: block; overflow: visible; }
+.hub-srcbar { display: grid; grid-template-columns: 70px 1fr 60px; align-items: center; gap: 8px; font-size: .8rem; margin: 4px 0; }
+.hub-srcbar-track { height: 10px; background: var(--card-2); border-radius: 999px; overflow: hidden; }
+.hub-srcbar-track > div { height: 100%; }
+#hubImportCard summary { cursor: pointer; }
+#hubImportCard .field { flex: 1; min-width: 180px; }

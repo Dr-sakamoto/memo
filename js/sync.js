@@ -11,6 +11,7 @@
 //   墓標に載っているidを除外することで、他端末に残っていても復活しないようにする。
 
 import { snapshot, replaceData } from "./store.js";
+import { externalSnapshot, replaceExternal } from "./hub.js";
 
 const CONFIG_KEY = "cns.sync.config.v1";   // { url, anonKey, autoSync }
 const SESSION_KEY = "cns.sync.session.v1"; // { access_token, refresh_token, expires_at, user }
@@ -210,6 +211,8 @@ async function pullRemote(token, userId) {
     reports: data.reports || [],
     deletedPostIds: data.deletedPostIds || {},
     deletedReportIds: data.deletedReportIds || {},
+    external: data.external || [],
+    deletedExternalIds: data.deletedExternalIds || {},
   };
 }
 
@@ -280,7 +283,23 @@ function mergeState(local, remote) {
     .filter((r) => !deletedReportIds[r.id])
     .sort(byCreatedAtDesc);
 
-  return { posts, reports, deletedPostIds, deletedReportIds };
+  // 統合ハブの外部投稿。この端末で同期OFF（local.external === null）なら、
+  // リモートの値をそのまま素通しして保持する（他端末の同期データを消さない）。
+  let external = remote.external || [];
+  let deletedExternalIds = remote.deletedExternalIds || {};
+  if (local.external) {
+    deletedExternalIds = mergeDeletedIds(local.deletedExternalIds, remote.deletedExternalIds);
+    external = mergeById(local.external, remote.external, pickNewerCapture)
+      .filter((it) => !deletedExternalIds[it.id])
+      .sort(byCreatedAtDesc);
+  }
+
+  return { posts, reports, deletedPostIds, deletedReportIds, external, deletedExternalIds };
+}
+
+// 同じ外部投稿は、後から取得した方（いいね数などが新しい）を残す
+function pickNewerCapture(remote, local) {
+  return new Date(local.capturedAt || 0) >= new Date(remote.capturedAt || 0) ? local : remote;
 }
 
 // ---- 同期の実行 ----
@@ -297,7 +316,8 @@ export async function syncNow() {
     const userId = getSession().user.id;
 
     const remote = await pullRemote(token, userId);
-    const local = snapshot();
+    const extLocal = externalSnapshot(); // 同期OFFなら null
+    const local = { ...snapshot(), external: extLocal?.external || null, deletedExternalIds: extLocal?.deletedExternalIds || {} };
     const merged = mergeState(local, remote);
 
     // ローカルに変化があるか（リモートから増えた分・他端末での削除分）を判定
@@ -312,13 +332,20 @@ export async function syncNow() {
       replaceData(merged);
       if (localContentChanged) onApplied();
     }
+    if (local.external &&
+        (JSON.stringify(merged.external) !== JSON.stringify(local.external) ||
+         JSON.stringify(merged.deletedExternalIds) !== JSON.stringify(local.deletedExternalIds))) {
+      replaceExternal(merged);
+    }
 
     // リモートにも変化があれば（ローカルからの追加・削除分）プッシュ
     const remoteChanged =
       JSON.stringify(merged.posts) !== JSON.stringify(remote.posts) ||
       JSON.stringify(merged.reports) !== JSON.stringify(remote.reports) ||
       JSON.stringify(merged.deletedPostIds) !== JSON.stringify(remote.deletedPostIds) ||
-      JSON.stringify(merged.deletedReportIds) !== JSON.stringify(remote.deletedReportIds);
+      JSON.stringify(merged.deletedReportIds) !== JSON.stringify(remote.deletedReportIds) ||
+      JSON.stringify(merged.external) !== JSON.stringify(remote.external) ||
+      JSON.stringify(merged.deletedExternalIds) !== JSON.stringify(remote.deletedExternalIds);
 
     if (remoteChanged) {
       await pushRemote(token, userId, merged);

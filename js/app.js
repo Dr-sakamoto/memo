@@ -15,6 +15,8 @@ import {
 import { milestoneBonus, pickForTicker, ageInDays } from "./mass.js";
 import { stageOf, nextStage, isSprouted, bunchCount, renderVineSvg } from "./vine.js";
 import { PROVIDERS, replyToPost, postsInLastDays, hasApiKey, localAnalysis, currentModelLabel } from "./ai.js";
+import { initHub, renderHub } from "./hub-ui.js";
+import { sourceMeta, wipeExternal, onHubChange, getHubSettings } from "./hub.js";
 import { listGeneratablePeriods, pendingWeekly, generateReport, reportTimeSeries, themeLifecycles, recurringBlindSpots, suggestionFollowThrough, selfReportedMoodByPeriod } from "./report.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -52,7 +54,7 @@ function moodEmoji(mood) {
 
 // ---------- タブ切り替え ----------
 
-const views = ["timeline", "timeaxis", "vine", "report", "settings"];
+const views = ["timeline", "hub", "timeaxis", "vine", "report", "settings"];
 
 $("#tabs").addEventListener("click", (e) => {
   const btn = e.target.closest(".tab");
@@ -65,6 +67,7 @@ function switchView(name) {
     $(`#view-${v}`).hidden = v !== name;
   });
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
+  if (name === "hub") renderHub();
   if (name === "timeaxis") renderTimeaxis();
   if (name === "vine") renderVine();
   if (name === "report") renderReportView();
@@ -1181,9 +1184,10 @@ $("#importPasteBtn").addEventListener("click", () => {
 });
 
 $("#wipeBtn").addEventListener("click", () => {
-  if (!confirm("本当にすべての雑記とレポートを削除しますか？この操作は取り消せません。")) return;
+  if (!confirm("本当にすべての雑記とレポート（統合タブに取り込んだ外部投稿も含む）を削除しますか？この操作は取り消せません。")) return;
   if (!confirm("最終確認：ブドウの木も種に戻ります。削除しますか？")) return;
   wipeAll();
+  wipeExternal();
   renderAll();
 });
 
@@ -1286,6 +1290,8 @@ $("#syncAutoToggle").addEventListener("change", (e) => {
 
 // データ変更のたびに自動プッシュ（デバウンス）
 onMutation(() => scheduleAutoPush());
+// 統合ハブの取り込み・設定変更も、外部投稿の同期がONなら自動プッシュ（同期由来の反映は除く）
+onHubChange((meta) => { if (!meta?.remote && getHubSettings().syncExternal) scheduleAutoPush(); });
 
 // ---------- 初期化 ----------
 
@@ -1298,9 +1304,27 @@ function renderAll() {
   updateTicker();
   updateThreadHint();
   updatePendingBanner();
+  if (!$("#view-hub").hidden) renderHub();
 }
 
 renderAll();
+
+// 統合ハブ: 外部SNSの投稿を「接ぎ木」するときは、コンポーザーに引用を差し込んでタイムラインへ。
+// 外部投稿はMEMOの雑記ストアに入れない（成長・連・レポートを汚さない）ので、refIdではなく本文引用にする。
+initHub({
+  onQuoteToMemo: (it) => {
+    const m = sourceMeta(it.source);
+    const head = `${m.label}${it.author ? " @" + it.author : ""} ${fmtDateTime(it.createdAt)}`;
+    const quoted = it.text.split("\n").map((l) => "> " + l).join("\n");
+    const box = $("#composerText");
+    box.value = `${quoted}\n— ${head}${it.url ? " " + it.url : ""}\n\n`;
+    switchView("timeline");
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+    box.dispatchEvent(new Event("input"));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  },
+});
 
 // クラウド同期の起動（設定済みかつログイン済みなら初回同期）
 initSync({
