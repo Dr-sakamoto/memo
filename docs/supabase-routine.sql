@@ -120,5 +120,7 @@ end;
 $$;
 
 revoke all on function public.memo_routine_user() from public, anon, authenticated;
+revoke all on function public.routine_read_state() from public;
+revoke all on function public.routine_put_report(jsonb) from public;
 grant execute on function public.routine_read_state() to anon;
 grant execute on function public.routine_put_report(jsonb) to anon;
