@@ -205,6 +205,8 @@ export function parseJsonLoose(text) {
 
 // ---- ポスト整形（プロンプト用） ----
 
+const SOURCE_LABEL = { x: "X", "755": "755", web: "Web" };
+
 export function formatPostsForPrompt(posts, { withIds = false } = {}) {
   return posts
     .slice()
@@ -214,8 +216,10 @@ export function formatPostsForPrompt(posts, { withIds = false } = {}) {
       const date = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
       const mood = p.mood == null ? "" : ` 気分:${p.mood > 0 ? "+" : ""}${p.mood}`;
       const rt = p.type === "repost" ? "（過去ポストの再掲）" : p.type === "quote" ? "（過去ポストへの引用）" : "";
+      // 外部SNSに書いた自分の投稿は出自を付ける（MEMO＝自分だけの場所／SNS＝人に見せる場所）
+      const src = p.source && p.source !== "memo" ? `[${SOURCE_LABEL[p.source] || p.source}]` : "";
       const id = withIds ? `[id:${p.id}]` : "";
-      return `${id}[${date}${mood}]${rt} ${p.text}`;
+      return `${id}[${date}${mood}]${src}${rt} ${p.text}`;
     })
     .join("\n");
 }

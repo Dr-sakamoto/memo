@@ -225,98 +225,6 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
   background: var(--accent-soft);
   color: var(--grape);
 }
-/* ===== 連（スレッド）＝「同じ一息」のまとまり =====
-   連に属する投稿は、間を空けずにピタッと束ね、1つのカード（.thread）に包む。
-   投稿どうしの継ぎ目は薄い区切り線だけにして「1つのまとまり」に見せ、
-   その線の端に小さなハサミを置いて、そこから連を断ち切れるようにする。 */
-.thread {
-  background: var(--card);
-  border: 1.75px solid var(--line);
-  border-radius: 12px;
-  margin-bottom: 10px;
-  overflow: hidden;
-}
-/* 連の中の各投稿は、枠・角丸・余白を外して親カードに密着させる */
-.thread .post.thread-item {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  margin: 0;
-}
-/* 続き（連の先頭＝最古以外）を示す控えめな矢印。色は変えず muted のまま */
-.thread-mark { color: var(--muted); font-weight: 700; margin-right: 2px; }
-
-/* 投稿どうしの継ぎ目：薄い区切り線。高さを持たず密着を保つ。線の端に小さなハサミ */
-.thread-seam {
-  position: relative;
-  height: 1px;
-  margin: 0 14px;
-  background: var(--line);
-}
-.thread-cut-btn {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  color: var(--muted);
-  font-size: .72rem;
-  line-height: 1;
-  cursor: pointer;
-  opacity: .5;
-  box-shadow: 0 1px 3px rgba(42, 36, 56, .1);
-  transition: opacity .12s, color .12s, background .12s, border-color .12s;
-}
-.thread-cut-btn:hover, .thread-cut-btn:focus-visible {
-  opacity: 1;
-  color: #fff;
-  background: var(--danger);
-  border-color: var(--danger);
-}
-/* ハサミにホバー中は、切られる継ぎ目の線を赤い破線で予告する */
-.thread-seam:has(.thread-cut-btn:hover),
-.thread-seam:has(.thread-cut-btn:focus-visible) {
-  background: repeating-linear-gradient(90deg, var(--danger) 0 5px, transparent 5px 10px);
-}
-
-/* コンポーザーの連ヒント（続きになる／新しい連にする） */
-.thread-hint {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  margin-top: 8px;
-  padding: 6px 10px;
-  background: var(--bg-soft);
-  border-radius: 8px;
-  font-size: .78rem;
-  color: var(--muted);
-}
-.thread-hint-icon { font-size: .9rem; }
-.thread-toggle { display: flex; gap: 6px; margin-left: auto; }
-.thread-toggle-btn {
-  background: var(--card);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: .74rem;
-  padding: 3px 9px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-.thread-toggle-btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
 .post-body { margin: 8px 0 6px; white-space: pre-wrap; word-break: break-word; }
 .post-body .tag { color: var(--accent); }
 .tag[data-tag] { cursor: pointer; }
@@ -428,11 +336,11 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
 .spin { display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---- ティッカーから引用→連ジャンプしたときのハイライト ---- */
-.thread-highlight {
-  animation: thread-highlight-pulse 2s ease;
+/* ---- 電光掲示板から過去のつぶやきへ飛んだときのハイライト ---- */
+.post-highlight {
+  animation: post-highlight-pulse 2s ease;
 }
-@keyframes thread-highlight-pulse {
+@keyframes post-highlight-pulse {
   0% { box-shadow: 0 0 0 3px var(--accent); }
   100% { box-shadow: 0 0 0 3px transparent; }
 }
@@ -670,3 +578,42 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--a
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+
+/* ===== 統合ハブ ===== */
+.hub-item { border-left: 3px solid var(--src, var(--line)); }
+.hub-src { font-weight: 700; color: var(--src, var(--text)); }
+.hub-who { color: var(--text); }
+.hub-mine {
+  font-size: .68rem; color: var(--accent); background: var(--accent-soft);
+  border-radius: 999px; padding: 1px 6px;
+}
+.hub-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.hub-metrics { font-size: .75rem; color: var(--muted); }
+.hub-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.hub-act {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-size: .78rem; color: var(--muted); text-decoration: none; font-family: inherit;
+}
+.hub-act:hover { color: var(--accent); }
+.hub-act.danger:hover { color: var(--danger); }
+.post-body a { color: var(--accent); word-break: break-all; }
+.hub-tools { justify-content: space-between; margin-bottom: 0; }
+.hub-subtabs { display: flex; gap: 6px; }
+.hub-export { display: flex; gap: 6px; flex-wrap: wrap; }
+.checkbox-inline { display: inline-flex; align-items: center; gap: 4px; font-size: .85rem; }
+#hubAiResult:empty { display: none; }
+#hubAnalysis h3 { font-size: .85rem; margin: 16px 0 6px; color: var(--grape); }
+.hub-chart { display: block; overflow: visible; }
+.hub-srcbar { display: grid; grid-template-columns: 70px 1fr 60px; align-items: center; gap: 8px; font-size: .8rem; margin: 4px 0; }
+.hub-srcbar-track { height: 10px; background: var(--card-2); border-radius: 999px; overflow: hidden; }
+.hub-srcbar-track > div { height: 100%; }
+#hubImportCard summary { cursor: pointer; }
+#hubImportCard .field { flex: 1; min-width: 180px; }
+
+/* ===== Claudeのルーティン連携 ===== */
+.routine-title { font-size: .95rem; margin: 6px 0; }
+.routine-badge {
+  font-size: .68rem; font-weight: normal; color: var(--leaf);
+  background: var(--card-2); border-radius: 999px; padding: 1px 7px; margin-left: 4px;
+}
+#routineTokenOut { flex: 1; min-width: 200px; font-family: ui-monospace, monospace; font-size: .75rem; }

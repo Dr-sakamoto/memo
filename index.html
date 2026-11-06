@@ -36,6 +36,7 @@
 
 <nav class="tabs" id="tabs">
   <button class="tab active" data-view="timeline">タイムライン</button>
+  <button class="tab" data-view="hub">統合</button>
   <button class="tab" data-view="timeaxis">時間軸</button>
   <button class="tab" data-view="vine">ブドウの木</button>
   <button class="tab" data-view="report">レポート</button>
@@ -51,15 +52,7 @@
       <button class="btn small primary" id="pendingBannerGo">レポートを見る</button>
     </div>
     <div class="composer card">
-      <textarea id="composerText" rows="3" placeholder="いま、なにを考えている？（雑記でいい。分類は他者＝AIの仕事）"></textarea>
-      <div class="thread-hint" id="threadHint" hidden>
-        <span class="thread-hint-icon" id="threadHintIcon"></span>
-        <span id="threadHintText"></span>
-        <div class="thread-toggle" id="threadToggle" role="group" aria-label="連の設定">
-          <button type="button" class="thread-toggle-btn" data-mode="cont">↳ 続きにする</button>
-          <button type="button" class="thread-toggle-btn" data-mode="break">🌿 新しい連にする</button>
-        </div>
-      </div>
+      <textarea id="composerText" rows="3" placeholder="いま、なにを考えている？（雑記でいい。つなげるのも分類するのも、醸造＝AIの仕事）"></textarea>
       <div class="composer-footer">
         <div class="mood-picker" id="moodPicker" title="いまの気分（任意）"></div>
         <div class="composer-actions">
@@ -87,6 +80,74 @@
     <div class="feed" id="feed"></div>
   </section>
 
+  <!-- ===== 統合ハブ（X / 755 などの外部SNS + MEMO） ===== -->
+  <section class="view" id="view-hub" hidden>
+    <p class="view-desc">X・755など外のSNSに書いたものと、ここ（MEMO）の雑記を一本の流れに。横断して閲覧・分析・抽出し、自分の投稿はレポート（醸造）の材料にもなる。外部の投稿は取り込み専用で、元のSNSには何も書き込みません。</p>
+
+    <details class="card" id="hubImportCard">
+      <summary><b>📥 取り込み</b> <span class="muted" id="hubExtStatus"></span></summary>
+      <p class="muted"><b>① Chrome拡張（おすすめ）</b> — <code>extension/</code> フォルダを chrome://extensions →「パッケージ化されていない拡張機能を読み込む」で追加。X・755を普段どおり閲覧するだけで表示された投稿が拡張に貯まり、このページを開くと自動で届きます。任意のサイトでも、文字を選択して右クリック →「MEMOハブへ送る」で取り込めます。</p>
+      <p class="muted"><b>② Xの公式アーカイブ</b> — X の「設定 → アカウント → データのアーカイブをダウンロード」で得たZIP内の <code>data/tweets.js</code>（複数あれば <code>tweets-part1.js</code> なども）を選択。過去の全投稿をまとめて取り込めます。</p>
+      <p class="muted"><b>③ JSON</b> — 拡張の「JSONで書き出し」や、このページのJSONエクスポートも読み込めます。</p>
+      <label class="btn file-btn">ファイルを選んで取り込む<input type="file" id="hubImportFile" accept=".js,.json,application/json,text/javascript" multiple hidden></label>
+      <hr>
+      <p class="muted">「自分の投稿」の判定に使うアカウント名（@なし・カンマ区切りで複数可）</p>
+      <div class="row-gap">
+        <label class="field"><span>𝕏 X のユーザー名</span><input type="text" id="hubHandleX" placeholder="your_handle"></label>
+        <label class="field"><span>7️⃣ 755 のユーザー名/トークID</span><input type="text" id="hubHandle755" placeholder="your_talk"></label>
+      </div>
+      <label class="field checkbox">
+        <input type="checkbox" id="hubBrewExternal">
+        <span>外部SNSの「自分の投稿」も、レポート（醸造）と電光掲示板に混ぜる</span>
+      </label>
+      <label class="field checkbox">
+        <input type="checkbox" id="hubSyncExternal">
+        <span>取り込んだ外部投稿もクラウド同期する（ログイン時のみ・件数が多いと同期が重くなります）</span>
+      </label>
+      <div class="row-gap">
+        <button class="btn primary" id="hubSaveHandlesBtn">保存</button>
+        <select id="hubClearSourceSelect"><option value="x">X</option><option value="755">755</option><option value="web">Web</option></select>
+        <button class="btn danger" id="hubClearSourceBtn">このソースの取り込みを全削除</button>
+      </div>
+      <p class="muted" id="hubImportMsg"></p>
+    </details>
+
+    <div class="feed-filter card">
+      <div class="filter-tags" id="hubSourceChips"></div>
+      <div class="filter-row" style="margin-top:8px">
+        <input type="text" id="hubText" placeholder="検索（スペースでAND、-語 で除外）">
+        <button class="btn small" id="hubClearBtn" hidden>絞り込み解除</button>
+      </div>
+      <div class="filter-row">
+        <input type="date" id="hubFrom"><span class="muted">〜</span><input type="date" id="hubTo">
+      </div>
+      <div class="filter-row">
+        <label class="checkbox-inline"><input type="checkbox" id="hubMineOnly"> 自分の投稿のみ</label>
+        <select id="hubSort">
+          <option value="new">新しい順</option>
+          <option value="old">古い順</option>
+          <option value="like">いいね順</option>
+        </select>
+        <span class="muted" id="hubCount"></span>
+      </div>
+      <div class="filter-row hub-tools">
+        <div class="hub-subtabs" id="hubSubTabs">
+          <button class="tag-chip active" data-hub-sub="list">📜 一覧</button>
+          <button class="tag-chip" data-hub-sub="analyze">📊 分析</button>
+        </div>
+        <span class="hub-export">
+          <button class="btn small" id="hubExportCsvBtn" title="絞り込んだ結果をCSVで書き出し">CSV</button>
+          <button class="btn small" id="hubExportJsonBtn" title="絞り込んだ結果をJSONで書き出し">JSON</button>
+          <button class="btn small primary" id="hubAiBtn" title="絞り込んだ結果をAIが横断分析">🤖 AIで分析</button>
+        </span>
+      </div>
+      <div id="hubAiResult" class="ai-result"></div>
+    </div>
+
+    <div class="feed" id="hubFeed"></div>
+    <div class="card" id="hubAnalysis" hidden></div>
+  </section>
+
   <!-- ===== 時間軸 ===== -->
   <section class="view" id="view-timeaxis" hidden>
     <p class="view-desc">過去の自分と再会する。同じ季節・同じ日付の周辺に、あなたは何を刻んでいたか。</p>
@@ -103,7 +164,7 @@
 
   <!-- ===== レポート ===== -->
   <section class="view" id="view-report" hidden>
-    <p class="view-desc">雑記はそのままに、AI＝唯一の他者が週・月の単位で構造的に解釈する。毎回同じ分析フォーマットで蓄積され、時間をまたいだ自己のメタ分析になる。</p>
+    <p class="view-desc">つぶやきは一本の流れに溜めるだけ。それをAI＝唯一の他者が週・月の単位で醸造し、構造的に解釈する（MEMOの雑記に加え、統合タブで取り込んだ外部SNSの自分の投稿も材料になる）。毎回同じ分析フォーマットで蓄積され、時間をまたいだ自己のメタ分析になる。</p>
 
     <div class="card">
       <h2>レポートを作成</h2>
@@ -240,6 +301,25 @@
         </div>
         <p class="muted" id="syncNote"></p>
       </div>
+
+      <!-- Claudeのルーティン連携（ログイン時） -->
+      <div id="routineBox" hidden>
+        <hr>
+        <h3 class="routine-title">🤖 Claudeのルーティンに醸造を任せる</h3>
+        <p class="muted">採取はこのアプリ、分析（醸造）はClaudeのルーティンが担当します。ルーティンは毎週、同期された一本の流れを読んでレポートを作り、ここへ届けます（レポートタブに 🤖 ルーティン の印つきで並びます）。ルーティンに渡すのは「読む」と「レポートを置く」だけができる専用トークンで、雑記を書き換えたりログインしたりはできません。</p>
+        <p class="muted" id="routineStatus"></p>
+        <div class="row-gap">
+          <button class="btn" id="routineIssueBtn">連携トークンを発行</button>
+          <button class="btn danger" id="routineRevokeBtn" hidden>連携を無効化</button>
+        </div>
+        <div id="routineTokenWrap" hidden>
+          <p class="muted">⚠️ このトークンは今しか表示されません。Claude側の登録フォーム（ネットワークシークレット）にだけ貼り付けてください。チャットには貼らないでください。</p>
+          <div class="row-gap">
+            <input type="text" id="routineTokenOut" readonly>
+            <button class="btn small" id="routineCopyBtn">コピー</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -265,20 +345,6 @@
   </section>
 
 </main>
-
-<!-- 引用モーダル -->
-<div class="modal-backdrop" id="quoteModal" hidden>
-  <div class="modal card">
-    <h3>引用して刻む（接ぎ木）</h3>
-    <blockquote id="quoteTarget"></blockquote>
-    <button class="btn small" id="quoteViewThreadBtn">🧵 その時の連を見る</button>
-    <textarea id="quoteText" rows="3" placeholder="過去の自分に、いまの自分は何を重ねる？"></textarea>
-    <div class="modal-actions">
-      <button class="btn" id="quoteCancelBtn">やめる</button>
-      <button class="btn primary" id="quoteSubmitBtn">刻む</button>
-    </div>
-  </div>
-</div>
 
 <script type="module" src="js/app.js"></script>
 </body>

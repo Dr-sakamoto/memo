@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "MEMO Hub Collector",
+  "version": "1.0.0",
+  "description": "X・755などで閲覧した投稿を集めて、MEMO（自分だけのCNS）の統合タブへ届けます。外部サーバーは使いません。",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "MEMO Hub Collector"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage", "unlimitedStorage", "contextMenus", "tabs"],
+  "host_permissions": ["https://api.7gogo.jp/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*", "https://mobile.x.com/*"],
+      "js": ["content-x.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://dr-sakamoto.github.io/memo/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
