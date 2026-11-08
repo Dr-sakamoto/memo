@@ -227,9 +227,37 @@ async function addTrack(input) {
   if (!talkId) throw new Error("トークIDかURL（https://7gogo.jp/〇〇）を入れてください");
   const info = await get755(encodeURIComponent(talkId)); // 実在確認と名前の取得
   const name = info?.user?.name || talkId;
-  await saveTrack(talkId, { name, addedAt: new Date().toISOString() });
+  const talkName = info?.talk?.name || "";
+  await saveTrack(talkId, { name, talkName, addedAt: new Date().toISOString() });
   const res = await refreshTrack(talkId);
-  return { talkId, name, ...res };
+  return { talkId, name, talkName, ...res };
+}
+
+// トーク名・ユーザー名で検索（公式Webの検索API。2026-11 に実際の応答で確認）
+//   GET /web/v2/search/talks?query=<語>&limit=<件数>&offset=<次の開始位置>
+//   → data.list[{ talkId, name, thumbnailUrl, description, watchCount, update }], data.next, data.nextOffset, data.hitCount
+async function searchTalks(query, offset = 0) {
+  const q = String(query || "").trim();
+  if (!q) throw new Error("検索する言葉を入れてください");
+  const params = new URLSearchParams({ query: q, limit: "20" });
+  if (offset) params.set("offset", String(offset));
+  const res = await fetch(`https://api.7gogo.jp/web/v2/search/talks?${params}`);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.data) throw new Error(json.error?.message || `755の検索に失敗しました（HTTP ${res.status}）`);
+  const tracks = await getTracks();
+  return {
+    hitCount: json.data.hitCount || 0,
+    nextOffset: json.data.next ? json.data.nextOffset : null,
+    list: (json.data.list || []).map((t) => ({
+      talkId: t.talkId || t.talkUiSetting?.talkCode,
+      name: t.name || "",
+      description: t.description || "",
+      thumbnailUrl: /^https:\/\//.test(t.thumbnailUrl || "") ? t.thumbnailUrl : "",
+      watchCount: Number(t.watchCount) || 0,
+      updatedAt: t.update ? new Date(Number(t.update) * 1000).toISOString() : null,
+      tracked: Boolean(tracks[t.talkId]),
+    })).filter((t) => t.talkId),
+  };
 }
 
 let refreshing = Promise.resolve();
@@ -328,6 +356,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case "track755Remove": return saveTrack(talkIdOf(msg.talkId), null);
       case "track755Refresh": return msg.talkId ? refreshTrack(talkIdOf(msg.talkId)) : refreshAllTracks();
       case "track755List": return getTracks();
+      case "search755": return searchTalks(msg.query, msg.offset);
       case "getSettings": return getSettings();
       default: return null;
     }
