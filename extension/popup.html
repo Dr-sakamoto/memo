@@ -29,6 +29,16 @@
   #trackList .t-name { font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #trackList .t-err { color: #dc2626; }
   #trackList button { flex: 0 0 auto; padding: 2px 6px; font-size: 11px; }
+  #searchBox { margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+  #searchInfo { margin: 0 0 4px; }
+  #searchList { list-style: none; padding: 0; margin: 0; max-height: 220px; overflow-y: auto; }
+  #searchList li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  #searchList li:last-child { border-bottom: none; }
+  #searchList img, #searchList .s-noimg { width: 32px; height: 32px; border-radius: 50%; flex: 0 0 32px; object-fit: cover; background: var(--soft); }
+  #searchList .s-main { flex: 1; min-width: 0; }
+  #searchList .s-name { font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #searchList .s-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #searchList button { flex: 0 0 auto; padding: 3px 8px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -50,8 +60,13 @@
   <h2>7️⃣ 755 追跡リスト</h2>
   <p class="muted">登録したトーク（アカウント）の新着を、Chromeが開いている間3時間おきに自動で取ってきます。初回は新しい方から最大3000件さかのぼります。</p>
   <div class="row">
-    <input type="text" id="trackInput" placeholder="トークID か https://7gogo.jp/〇〇">
-    <button class="primary" id="trackAdd" style="flex:0 0 auto">追加</button>
+    <input type="text" id="trackInput" placeholder="トーク名・ユーザー名で検索（IDやURLも可）">
+    <button class="primary" id="trackSearch" style="flex:0 0 auto">検索</button>
+  </div>
+  <div id="searchBox" hidden>
+    <p class="muted" id="searchInfo"></p>
+    <ul id="searchList"></ul>
+    <div class="row" id="searchMoreRow" hidden><button id="searchMore">さらに表示</button></div>
   </div>
   <div class="row" id="trackHereRow" hidden><button id="trackHere">いま開いているトーク（<b id="talkCode"></b>）を追加</button></div>
   <ul id="trackList"></ul>

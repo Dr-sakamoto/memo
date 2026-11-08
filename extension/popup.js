@@ -54,7 +54,7 @@ async function renderTracks() {
     main.className = "t-main";
     const name = document.createElement("div");
     name.className = "t-name";
-    name.textContent = `${t.name || id}（${id}）`;
+    name.textContent = `${t.name || id}（${t.talkName || id}）`;
     const sub = document.createElement("div");
     sub.className = t.lastError ? "muted t-err" : "muted";
     sub.textContent = t.lastError
@@ -91,17 +91,111 @@ async function run(btn, message, describe) {
   renderTracks();
 }
 
-$("trackAdd").addEventListener("click", () => {
+const addedMsg = (r) =>
+  `${r.name}${r.talkName ? `「${r.talkName}」` : ""}を追加しました${r.error ? `。ただし取得に失敗: ${r.error}` : `。${r.added}件を取り込み`}`;
+
+// ---- 検索して追加 ----
+
+let searchQuery = "";
+let searchNext = null;
+
+function searchRow({ talkId, name, thumbnailUrl, sub, tracked }) {
+  const li = document.createElement("li");
+  let icon;
+  if (thumbnailUrl) {
+    icon = document.createElement("img");
+    icon.src = thumbnailUrl;
+    icon.alt = "";
+    icon.referrerPolicy = "no-referrer";
+    // 画像が読めないときは無地の丸に差し替える
+    icon.addEventListener("error", () => {
+      const ph = document.createElement("span");
+      ph.className = "s-noimg";
+      icon.replaceWith(ph);
+    }, { once: true });
+  } else {
+    icon = document.createElement("span");
+    icon.className = "s-noimg";
+  }
+  const main = document.createElement("div");
+  main.className = "s-main";
+  const n = document.createElement("div");
+  n.className = "s-name";
+  n.textContent = name;
+  const s = document.createElement("div");
+  s.className = "muted s-sub";
+  s.textContent = sub;
+  main.append(n, s);
+  const btn = document.createElement("button");
+  btn.textContent = tracked ? "追加済み" : "追加";
+  btn.disabled = tracked;
+  if (!tracked) {
+    btn.className = "primary";
+    btn.addEventListener("click", async () => {
+      await run(btn, { type: "track755Add", input: talkId }, addedMsg);
+      if (!/^できませんでした/.test($("msg").textContent)) {
+        btn.textContent = "追加済み";
+        btn.className = "";
+        btn.disabled = true;
+      }
+    });
+  }
+  li.append(icon, main, btn);
+  return li;
+}
+
+async function doSearch({ more = false } = {}) {
   const input = $("trackInput").value.trim();
   if (!input) return;
-  run($("trackAdd"), { type: "track755Add", input }, (r) => {
+  // URLが貼られたら検索せずにそのまま追加
+  if (!more && /7gogo\.jp\//.test(input)) {
+    $("searchBox").hidden = true;
+    await run($("trackSearch"), { type: "track755Add", input }, addedMsg);
     $("trackInput").value = "";
-    return `${r.name}（${r.talkId}）を追加しました${r.error ? `。ただし取得に失敗: ${r.error}` : `。${r.added}件を取り込み`}`;
-  });
+    return;
+  }
+  if (!more) {
+    searchQuery = input;
+    searchNext = null;
+    $("searchList").replaceChildren();
+  }
+  const btn = more ? $("searchMore") : $("trackSearch");
+  btn.disabled = true;
+  $("searchBox").hidden = false;
+  $("searchInfo").textContent = "検索中…";
+  try {
+    const res = await chrome.runtime.sendMessage({ type: "search755", query: searchQuery, offset: more ? searchNext : 0 });
+    if (res?.error) throw new Error(res.error);
+    const list = $("searchList");
+    // IDそのものが入力された場合に備えて「IDとして追加」の行を先頭に出す
+    if (!more && /^[A-Za-z0-9_-]{6,64}$/.test(searchQuery) && !res.list.some((t) => t.talkId === searchQuery)) {
+      list.append(searchRow({ talkId: searchQuery, name: `ID「${searchQuery}」のトーク`, sub: "IDとして直接追加します", tracked: false }));
+    }
+    for (const t of res.list) {
+      const parts = [t.talkId, `フォロワー ${t.watchCount.toLocaleString()}`];
+      if (t.updatedAt) parts.push(`更新 ${fmtTime(t.updatedAt)}`);
+      list.append(searchRow({ talkId: t.talkId, name: t.name || t.talkId, thumbnailUrl: t.thumbnailUrl, sub: parts.join("・"), tracked: t.tracked }));
+    }
+    searchNext = res.nextOffset;
+    const shown = list.children.length;
+    $("searchInfo").textContent = res.hitCount
+      ? `「${searchQuery}」の検索結果 ${res.hitCount.toLocaleString()}件（${shown}件を表示）`
+      : `「${searchQuery}」に一致するトークは見つかりませんでした`;
+    $("searchMoreRow").hidden = searchNext == null;
+  } catch (err) {
+    $("searchInfo").textContent = `検索できませんでした: ${err.message}`;
+  }
+  btn.disabled = false;
+}
+
+$("trackSearch").addEventListener("click", () => doSearch());
+$("trackInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.isComposing) doSearch();
 });
+$("searchMore").addEventListener("click", () => doSearch({ more: true }));
 
 $("trackHere").addEventListener("click", () => {
-  run($("trackHere"), { type: "track755Add", input: $("talkCode").textContent }, (r) => `${r.name} を追加しました（${r.added}件を取り込み）`);
+  run($("trackHere"), { type: "track755Add", input: $("talkCode").textContent }, addedMsg);
 });
 
 $("trackRefreshAll").addEventListener("click", () => {
